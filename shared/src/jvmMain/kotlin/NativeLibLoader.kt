@@ -9,7 +9,7 @@ object NativeLibLoader {
     fun ensureLoaded() {
         if (isLoaded.getAndSet(true)) return
 
-        val crateName = "rust_lib" // Nome exato definido no Cargo.toml
+        val crateName = "camera_engine" // Nome exato definido no Cargo.toml
 
         val os = System.getProperty("os.name").lowercase()
         val libFileName = when {

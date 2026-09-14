@@ -10,7 +10,7 @@ plugins {
 val os = DefaultNativePlatform.getCurrentOperatingSystem()
 val arch = DefaultNativePlatform.getCurrentArchitecture()
 
-val libName = "rust_lib"
+val libName = "camera_engine"
 
 val jnaPlatformFolder = when {
     os.isWindows -> if (arch.isArm64) "win32-aarch64" else "win32-x86-64"
@@ -40,8 +40,8 @@ val buildRustRelease by tasks.registering(Exec::class) {
     commandLine("cargo", "build", "--release")
 
     // Define inputs and outputs for Gradle reuse cache if nothing changed
-    inputs.dir("${rustDir}/core/src")
-    inputs.file("${rustDir}/core/Cargo.toml")
+    inputs.dir("${rustDir}/camera_engine/src")
+    inputs.file("${rustDir}/camera_engine/Cargo.toml")
     inputs.file("${rustDir}/Cargo.toml")
     outputs.file(rustOutputLib)
 }

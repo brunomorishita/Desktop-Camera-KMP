@@ -7,7 +7,7 @@ class WindowsCameraService : CameraService {
         NativeLibLoader.ensureLoaded()
     }
 
-    private val controller = uniffi.rust_lib.CameraController()
+    private val controller = uniffi.camera_engine.CameraController()
 
     override fun createRenderer(hwndAddress: ULong, width: UInt, height: UInt) {
         controller.createRenderer(hwndAddress, width, height)

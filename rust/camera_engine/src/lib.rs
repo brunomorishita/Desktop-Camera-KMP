@@ -44,11 +44,23 @@ uniffi::setup_scaffolding!();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CameraError {
-    #[error("Init Error: {msg}")]
-    InitError { msg: String },
+    #[error("Win Error: {msg}")]
+    Windows { code: i32, msg: String },
 
     #[error("Stream Error: {msg}")]
     StreamError { msg: String },
+
+    #[error("Stream Error: {msg}")]
+    CommonError { msg: String },
+}
+
+impl From<windows::core::Error> for CameraError {
+    fn from(value: windows::core::Error) -> Self {
+        CameraError::Windows {
+            code: value.code().0,
+            msg: value.message().to_string(),
+        }
+    }
 }
 
 // Estrutura enviada para o Kotlin via FFI
@@ -104,34 +116,24 @@ impl CameraController {
         let state_guard = self
             .state
             .try_lock()
-            .ok_or_else(|| CameraError::InitError {
-                msg: "Capture not initialized".to_string(),
+            .ok_or_else(|| CameraError::CommonError {
+                msg: "Failed to acquire lock".to_string(),
             })?;
 
-        let camera_state = state_guard.as_ref().ok_or_else(|| CameraError::InitError {
-            msg: "Capture not initialized".to_string(),
-        })?;
+        let camera_state = state_guard
+            .as_ref()
+            .ok_or_else(|| CameraError::CommonError {
+                msg: "Failed to get reference to inner cammera state".to_string(),
+            })?;
 
-        let media_source = camera_state
-            .media_source
-            .resolve()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-
-        let current_format = media_source
-            .CurrentFormat()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let media_source = camera_state.media_source.resolve()?;
+        let current_format = media_source.CurrentFormat()?;
 
         // 2. Acessa as propriedades específicas de vídeo (VideoFormat)
-        let video_format = current_format
-            .VideoFormat()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let video_format = current_format.VideoFormat()?;
 
-        let width = video_format
-            .Width()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-        let height = video_format
-            .Height()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let width = video_format.Width()?;
+        let height = video_format.Height()?;
 
         Ok(VideoDimensions { width, height })
     }
@@ -176,24 +178,19 @@ impl CameraController {
                 None,
                 Some(&mut context),
             )
-        }
-        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        }?;
 
-        let device = device.ok_or_else(|| CameraError::InitError {
+        let device = device.ok_or_else(|| CameraError::CommonError {
             msg: "Failed to get device".to_string(),
         })?;
-        let context = context.ok_or_else(|| CameraError::InitError {
+        let context = context.ok_or_else(|| CameraError::CommonError {
             msg: "Failed to get device context".to_string(),
         })?;
 
         // 2. Navigate COM graph to get modern Factory (IDXGIFactory2)
-        let dxgi_device: IDXGIDevice = device
-            .cast()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter() }
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-        let factory: IDXGIFactory2 = unsafe { adapter.GetParent() }
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let dxgi_device: IDXGIDevice = device.cast()?;
+        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter() }?;
+        let factory: IDXGIFactory2 = unsafe { adapter.GetParent() }?;
 
         // 3. Configure modern SwapChain (DESC1)
         let swapchain_desc = DXGI_SWAP_CHAIN_DESC1 {
@@ -222,16 +219,10 @@ impl CameraController {
                 None, // Opcional: Fullscreen desc
                 None, // Opcional: Restrict to one output
             )
-        }
-        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        }?;
 
-        let device1: ID3D11Device1 = device
-            .cast()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-
-        let context1: ID3D11DeviceContext1 = context
-            .cast()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let device1: ID3D11Device1 = device.cast()?;
+        let context1: ID3D11DeviceContext1 = context.cast()?;
 
         {
             let mut renderer_guard = self.renderer.lock();
@@ -246,15 +237,13 @@ impl CameraController {
     }
 
     pub async fn render_all_pending_frames(&self) -> Result<(), CameraError> {
-        let input_dim = self
-            .get_dimensions_from_media_capture()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let input_dim = self.get_dimensions_from_media_capture()?;
 
         let mut renderer_guard =
             self.renderer
                 .try_lock()
-                .ok_or_else(|| CameraError::InitError {
-                    msg: "Nenhuma câmera encontrada".to_string(),
+                .ok_or_else(|| CameraError::CommonError {
+                    msg: "No camera found".to_string(),
                 })?;
 
         let input_desc: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC =
@@ -277,8 +266,7 @@ impl CameraController {
         };
 
         if let Some(renderer) = renderer_guard.as_mut() {
-            let swap_chain_desc1 = unsafe { renderer.swap_chain.GetDesc1() }
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            let swap_chain_desc1 = unsafe { renderer.swap_chain.GetDesc1() }?;
 
             let content_desc = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
                 InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
@@ -297,24 +285,16 @@ impl CameraController {
                 Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
             };
 
-            let video_device: ID3D11VideoDevice = renderer
-                .device1
-                .cast()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            let video_device: ID3D11VideoDevice = renderer.device1.cast()?;
 
-            let video_context: ID3D11VideoContext = renderer
-                .context1
-                .cast()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            let video_context: ID3D11VideoContext = renderer.context1.cast()?;
 
             let video_enum: ID3D11VideoProcessorEnumerator =
-                unsafe { video_device.CreateVideoProcessorEnumerator(&content_desc) }
-                    .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                unsafe { video_device.CreateVideoProcessorEnumerator(&content_desc) }?;
 
             // Create Processor from enumerator
             let video_processor: ID3D11VideoProcessor =
-                unsafe { video_device.CreateVideoProcessor(&video_enum, 0) }
-                    .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                unsafe { video_device.CreateVideoProcessor(&video_enum, 0) }?;
 
             // 3. Empties handle's queue (u64) pending to be sent by camera
             while let Ok(handle_u64) = self.receiver.recv() {
@@ -322,44 +302,35 @@ impl CameraController {
                     let handle = windows::Win32::Foundation::HANDLE(handle_u64 as *mut _);
 
                     // Access private member from InnerNativeRenderer
-                    let frame_texture: ID3D11Texture2D =
-                        match renderer.device1.OpenSharedResource1(handle) {
-                            Ok(tex) => tex,
-                            Err(e) => {
-                                let _ = windows::Win32::Foundation::CloseHandle(handle);
-                                return Err(CameraError::InitError { msg: e.to_string() });
-                            }
-                        };
+                    let frame_texture: ID3D11Texture2D = renderer
+                        .device1
+                        .OpenSharedResource1(handle)
+                        .inspect_err(|_| {
+                            let _ = windows::Win32::Foundation::CloseHandle(handle);
+                        })?;
 
                     // Free native NT Handle immediately after Direct3D's opening
                     let _ = windows::Win32::Foundation::CloseHandle(handle);
 
                     let mut input_view: Option<ID3D11VideoProcessorInputView> = None;
-                    video_device
-                        .CreateVideoProcessorInputView(
-                            &frame_texture,
-                            &video_enum,
-                            &input_desc,
-                            Some(&mut input_view),
-                        )
-                        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                    video_device.CreateVideoProcessorInputView(
+                        &frame_texture,
+                        &video_enum,
+                        &input_desc,
+                        Some(&mut input_view),
+                    )?;
 
                     // Get SwapChain's Back Buffer
-                    let back_buffer_texture: ID3D11Texture2D = renderer
-                        .swap_chain
-                        .GetBuffer(0)
-                        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                    let back_buffer_texture: ID3D11Texture2D = renderer.swap_chain.GetBuffer(0)?;
 
                     let mut output_view: Option<ID3D11VideoProcessorOutputView> = None;
 
-                    video_device
-                        .CreateVideoProcessorOutputView(
-                            &back_buffer_texture, // 1. Recurso de saída (BackBuffer da SwapChain)
-                            &video_enum,
-                            &output_desc, // 2. Ponteiro para D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC
-                            Some(&mut output_view), // 3. Ponteiro de saída
-                        )
-                        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                    video_device.CreateVideoProcessorOutputView(
+                        &back_buffer_texture, // 1. Recurso de saída (BackBuffer da SwapChain)
+                        &video_enum,
+                        &output_desc, // 2. Ponteiro para D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC
+                        Some(&mut output_view), // 3. Ponteiro de saída
+                    )?;
 
                     let input_view: ManuallyDrop<Option<ID3D11VideoProcessorInputView>> =
                         ManuallyDrop::new(input_view);
@@ -371,21 +342,20 @@ impl CameraController {
                         ..Default::default()
                     };
 
-                    let output_view = output_view.ok_or_else(|| CameraError::InitError {
+                    let output_view = output_view.ok_or_else(|| CameraError::CommonError {
                         msg: "Failed to load output view".to_string(),
                     })?;
 
                     // 7. GPU runs a NV12 -> BGRA8 conversion by Hardware
-                    video_context
-                        .VideoProcessorBlt(&video_processor, &output_view, 0, &[stream_data])
-                        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                    video_context.VideoProcessorBlt(
+                        &video_processor,
+                        &output_view,
+                        0,
+                        &[stream_data],
+                    )?;
 
                     // Show frame at Swing's HWND
-                    renderer
-                        .swap_chain
-                        .Present(1, DXGI_PRESENT(0))
-                        .ok()
-                        .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                    renderer.swap_chain.Present(1, DXGI_PRESENT(0)).ok()?;
                 }
             }
         }
@@ -403,39 +373,21 @@ impl CameraController {
 
         // 2. Initialize MediaCapture
         let media_capture_agile = {
-            let media_capture =
-                MediaCapture::new().map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-            AgileReference::new(&media_capture)
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
+            let media_capture = MediaCapture::new()?;
+            AgileReference::new(&media_capture)?
         };
 
-        let async_op = media_capture_agile
-            .resolve()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-            .InitializeAsync()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let async_op = media_capture_agile.resolve()?.InitializeAsync()?;
 
-        async_op
-            .await
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        async_op.await?;
 
         // 3. Search video source
-        let frame_sources = media_capture_agile
-            .resolve()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-            .FrameSources()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let frame_sources = media_capture_agile.resolve()?.FrameSources()?;
         let mut selected_source = None;
 
         for pair in frame_sources {
-            let source = pair
-                .Value()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
-            let kind = source
-                .Info()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .SourceKind()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            let source = pair.Value()?;
+            let kind = source.Info()?.SourceKind()?;
 
             if kind == MediaFrameSourceKind::Color {
                 struct SendSource(windows::Media::Capture::Frames::MediaFrameSource);
@@ -445,26 +397,20 @@ impl CameraController {
             }
         }
 
-        let source = selected_source.ok_or_else(|| CameraError::InitError {
+        let source = selected_source.ok_or_else(|| CameraError::CommonError {
             msg: "No camera found".to_string(),
         })?;
 
-        let media_source_agile = AgileReference::new(&source.0)
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let media_source_agile = AgileReference::new(&source.0)?;
 
         let frame_reader_agile = {
             let agile_op = media_capture_agile
-                .resolve()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .CreateFrameReaderAsync(&source.0)
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+                .resolve()?
+                .CreateFrameReaderAsync(&source.0)?;
 
-            let frame_reader = agile_op
-                .await
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            let frame_reader = agile_op.await?;
 
-            AgileReference::new(&frame_reader)
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
+            AgileReference::new(&frame_reader)?
         };
 
         let handler_sender = self.sender.clone();
@@ -506,23 +452,13 @@ impl CameraController {
                 Ok(())
             });
 
-            frame_reader_agile
-                .resolve()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .FrameArrived(&event_handler)
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            frame_reader_agile.resolve()?.FrameArrived(&event_handler)?;
         }
 
-        let async_op = frame_reader_agile
-            .resolve()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-            .StartAsync()
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        let async_op = frame_reader_agile.resolve()?.StartAsync()?;
 
         // 6. Start streaming
-        async_op
-            .await
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        async_op.await?;
 
         // 7. Holds native state within a instance's synchronous Mutex
         {
@@ -546,41 +482,28 @@ impl CameraController {
 
         let async_op = {
             let state_guard = self.state.lock();
-            let camera_state = state_guard.as_ref().ok_or_else(|| CameraError::InitError {
-                msg: "Failure to acquire lock".to_string(),
-            })?;
+            let camera_state = state_guard
+                .as_ref()
+                .ok_or_else(|| CameraError::CommonError {
+                    msg: "Failure to acquire lock".to_string(),
+                })?;
 
-            camera_state
-                .frame_reader
-                .resolve()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .StopAsync()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
+            camera_state.frame_reader.resolve()?.StopAsync()?
         };
 
-        async_op
-            .await
-            .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+        async_op.await?;
 
         {
             let state_guard = self.state.lock();
-            let camera_state = state_guard.as_ref().ok_or_else(|| CameraError::InitError {
-                msg: "Failure to acquire lock".to_string(),
-            })?;
+            let camera_state = state_guard
+                .as_ref()
+                .ok_or_else(|| CameraError::CommonError {
+                    msg: "Failure to acquire lock".to_string(),
+                })?;
 
-            camera_state
-                .frame_reader
-                .resolve()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .Close()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            camera_state.frame_reader.resolve()?.Close()?;
 
-            camera_state
-                .media_capture
-                .resolve()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?
-                .Close()
-                .map_err(|e| CameraError::InitError { msg: e.to_string() })?;
+            camera_state.media_capture.resolve()?.Close()?;
         };
 
         {

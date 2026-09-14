@@ -1,0 +1,21 @@
+# Targets de compilação do Cargo (onde ficam as .dll, .so, .dylib, .rlib e .exe)
+/target/
+
+# Arquivos de trava do Cargo
+# NOTA: Para bibliotecas/CDylibs, o Cargo.lock NÃO deve ser commitado no Git.
+# Se o seu projeto Rust for uma aplicação binária standalone, você pode remover a linha abaixo.
+Cargo.lock
+
+# Arquivos temporários e backups de editores de código
+**/*.rs.bk
+*.swp
+*.tmp
+
+# Cache de ferramentas externas e profilers do Rust
+.cargo/
+.idea/
+.vscode/
+
+# Se você gerar bindings ou logs temporários do UniFFI na pasta do Rust
+/out/
+*.log

@@ -1,5 +1,9 @@
 # Desktop-Camera-KMP
 It's a personal project intended to create a Desktop App using KMP to visualize webcam and transmit it using rtsp, among other things described below.
+There is some things like rust, directx, mediafoundation that I want to learn, so I'll use this project to learn more about all this.
+
+## What it does now?
+For now it's just showing camera frames. 
 
 ## Requirements
  - Directx 11.1

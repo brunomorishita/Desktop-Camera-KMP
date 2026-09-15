@@ -9,33 +9,20 @@ class WindowsCameraService : CameraService {
 
     private val controller = uniffi.camera_engine.CameraController()
 
-    override fun createRenderer(hwndAddress: ULong, width: UInt, height: UInt) {
-        controller.createRenderer(hwndAddress, width, height)
-    }
-
-    override suspend fun startCapture() {
+    override suspend fun start(hwndAddress: ULong, width: UInt, height: UInt) {
         try {
-            controller.startCapture()
+            controller.start(hwndAddress, width, height)
         } catch (e: Exception) {
             println("Error starting capture natively: ${e.message}")
             throw e
         }
     }
 
-    override suspend fun stopCapture() {
+    override suspend fun stop() {
         try {
-            controller.stopCapture()
+            controller.stop()
         } catch (e: Exception) {
             println("Error stopping capture natively: ${e.message}")
-            throw e
-        }
-    }
-
-    override suspend fun renderAllPendingFrames() {
-        try {
-            controller.renderAllPendingFrames()
-        } catch (e: Exception) {
-            println("Error processing frames natively: ${e.message}")
             throw e
         }
     }

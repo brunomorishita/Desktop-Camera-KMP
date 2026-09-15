@@ -19,29 +19,26 @@ class CameraViewModel(
     private val _isStreaming = MutableStateFlow(false)
     val isStreaming: StateFlow<Boolean> = _isStreaming.asStateFlow()
 
-    fun startCamera(hwndPointer: ULong, width: UInt, height: UInt) {
+    fun start(hwndPointer: ULong, width: UInt, height: UInt) {
         if (_isStreaming.value) return
 
         viewModelScope.launch(Dispatchers.Default) {
-            cameraService.createRenderer(hwndPointer, width, height)
-            cameraService.startCapture()
+            cameraService.start(hwndPointer, width, height)
             _isStreaming.value = true
-
-            cameraService.renderAllPendingFrames()
         }
     }
 
-    fun stopCamera() {
+    fun stop() {
         _isStreaming.value = false
         viewModelScope.launch(Dispatchers.Default) {
-            cameraService.stopCapture()
+            cameraService.stop()
         }
     }
 
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch(Dispatchers.Default) {
-            cameraService.stopCapture()
+            cameraService.stop()
         }
 //        cameraService.detachHwnd()
     }

@@ -7,7 +7,11 @@ import org.koin.compose.viewmodel.koinViewModel
 fun CameraScreen(
     viewModel: CameraViewModel = koinViewModel()
 ) {
-    val isStreaming by viewModel.isStreaming.collectAsState()
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stop()
+        }
+    }
 
     CameraView(
         onCanvasReady = { hwndPtr, width, height ->

@@ -124,7 +124,7 @@ impl InnerNativeRenderer {
         })
     }
 
-    pub async fn start(
+    pub fn start(
         &self,
         input_dim: VideoDimensions,
         receiver: Receiver<u64>,

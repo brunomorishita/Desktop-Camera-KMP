@@ -22,6 +22,7 @@ use windows::{
 use crate::{CameraError, VideoDimensions};
 
 // Internal state of native capture
+#[derive(Debug)]
 pub struct InnerNativeCapture {
     media_capture: AgileReference<MediaCapture>,
     media_source: AgileReference<MediaFrameSource>,

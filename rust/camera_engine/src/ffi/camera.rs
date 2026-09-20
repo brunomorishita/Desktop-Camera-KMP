@@ -10,7 +10,6 @@ use crate::{
 
 #[derive(uniffi::Object)]
 pub struct CameraController {
-    renderer: Mutex<Option<InnerNativeRenderer>>,
     capture: Mutex<Option<InnerNativeCapture>>,
     sender: Sender<u64>,
     receiver: Receiver<u64>,
@@ -24,7 +23,6 @@ impl CameraController {
         let (sender, receiver) = bounded::<u64>(3);
 
         Arc::new(Self {
-            renderer: Mutex::new(None),
             capture: Mutex::new(None),
             sender,
             receiver,
@@ -36,13 +34,16 @@ impl CameraController {
         let capture = InnerNativeCapture::new().await?;
         let input_dim = capture.get_dimensions_from_media_capture()?;
 
+        capture.start(self.sender.clone()).await?;
+        *self.capture.lock() = Some(capture);
+
         // Initialize Renderer D3D
         let renderer = InnerNativeRenderer::new(hwnd_raw, width, height)?;
-        capture.start(self.sender.clone()).await?;
-        renderer.start(input_dim, self.receiver.clone()).await?;
-
-        *self.capture.lock() = Some(capture);
-        *self.renderer.lock() = Some(renderer);
+        let receiver = self.receiver.clone();
+        std::thread::spawn(move || {
+            let _ = renderer.start(input_dim, receiver);
+            renderer.stop();
+        });
 
         Ok(())
     }
@@ -52,12 +53,6 @@ impl CameraController {
         if let Some(capture) = capture_opt {
             capture.stop().await?;
         }
-        *self.capture.lock() = None;
-
-        if let Some(renderer) = self.renderer.lock().take() {
-            renderer.stop();
-        }
-        *self.renderer.lock() = None;
 
         Ok(())
     }

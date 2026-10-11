@@ -219,12 +219,14 @@ impl InnerNativeRenderer {
                 })?;
 
                 // 7. GPU runs a NV12 -> BGRA8 conversion by Hardware
-                video_context.VideoProcessorBlt(
-                    &video_processor,
-                    &output_view,
-                    0,
-                    &[stream_data],
-                )?;
+                let streams = [stream_data];
+                let blt_result =
+                    video_context.VideoProcessorBlt(&video_processor, &output_view, 0, &streams);
+
+                // Release input view (and the camera texture it holds), even if Blt failed
+                let [stream_data] = streams;
+                drop(ManuallyDrop::into_inner(stream_data.pInputSurface));
+                blt_result?;
 
                 // Show frame at Swing's HWND
                 self.swap_chain.Present(1, DXGI_PRESENT(0)).ok()?;

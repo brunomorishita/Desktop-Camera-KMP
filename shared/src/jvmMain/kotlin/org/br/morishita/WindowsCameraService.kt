@@ -26,4 +26,8 @@ class WindowsCameraService : CameraService {
             throw e
         }
     }
+
+    override fun resize(width: UInt, height: UInt) {
+        controller.resize(width, height)
+    }
 }

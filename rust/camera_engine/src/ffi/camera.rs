@@ -4,7 +4,7 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 
 use crate::{
-    win32::{InnerNativeCapture, InnerNativeRenderer},
+    win32::{renderer::PendingSize, InnerNativeCapture, InnerNativeRenderer},
     CameraError,
 };
 
@@ -13,6 +13,7 @@ pub struct CameraController {
     capture: Mutex<Option<InnerNativeCapture>>,
     sender: Sender<u64>,
     receiver: Receiver<u64>,
+    pending_size: PendingSize,
 }
 
 #[uniffi::export]
@@ -26,6 +27,7 @@ impl CameraController {
             capture: Mutex::new(None),
             sender,
             receiver,
+            pending_size: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -40,12 +42,21 @@ impl CameraController {
         // Initialize Renderer D3D
         let renderer = InnerNativeRenderer::new(hwnd_raw, width, height)?;
         let receiver = self.receiver.clone();
+        let pending_size = self.pending_size.clone();
         std::thread::spawn(move || {
-            let _ = renderer.start(input_dim, receiver);
+            let _ = renderer.start(input_dim, receiver, pending_size);
             renderer.stop();
         });
 
         Ok(())
+    }
+
+    /// Requests a new output size; applied by the render thread before the next frame
+    pub fn resize(&self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        *self.pending_size.lock() = Some((width, height));
     }
 
     pub async fn stop(&self) -> Result<(), CameraError> {

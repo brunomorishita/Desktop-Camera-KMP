@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import com.sun.jna.Native
 import com.sun.jna.Pointer
@@ -21,16 +20,12 @@ fun CameraView(onCanvasReady: (hwndPtr: ULong, width: UInt, height: UInt) -> Uni
                onSizeChanged: (width: UInt, height: UInt) -> Unit,
                modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     var currentSizePixels by remember { mutableStateOf(IntSize.Zero) }
 
-    // Get Compose's layout size and calculate physical resolution in the GPU
+    // Compose's layout size is already in physical pixels (DPI scale applied)
     val measuredModifier = modifier.onGloballyPositioned { coordinates ->
-        val logicalSize = coordinates.size
-
-        // Applying DPI scale factor (ex: 125%, 150%) to real pixels
-        val physicalWidth = (logicalSize.width * density.density).toInt()
-        val physicalHeight = (logicalSize.height * density.density).toInt()
+        val physicalWidth = coordinates.size.width
+        val physicalHeight = coordinates.size.height
 
         if (physicalWidth > 0 && physicalHeight > 0 &&
             (physicalWidth != currentSizePixels.width || physicalHeight != currentSizePixels.height)
@@ -41,7 +36,7 @@ fun CameraView(onCanvasReady: (hwndPtr: ULong, width: UInt, height: UInt) -> Uni
     }
 
     SwingPanel(
-        modifier = Modifier.fillMaxSize(),
+        modifier = measuredModifier.fillMaxSize(),
         factory = {
             object : Canvas() {
                 init {

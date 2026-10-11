@@ -28,6 +28,11 @@ class CameraViewModel(
         }
     }
 
+    fun resize(width: UInt, height: UInt) {
+        // Only stores the new size in Rust, cheap enough to call on every layout change
+        cameraService.resize(width, height)
+    }
+
     fun stop() {
         _isStreaming.value = false
         viewModelScope.launch(Dispatchers.Default) {

@@ -18,7 +18,7 @@ fun CameraScreen(
             viewModel.start(hwndPtr, width, height)
         },
         onSizeChanged = { width, height ->
-//            viewModel.resize(width, height)
+            viewModel.resize(width, height)
         }
     )
 }

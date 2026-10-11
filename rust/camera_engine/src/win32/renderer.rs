@@ -1,6 +1,7 @@
-use std::{ffi::c_void, mem::ManuallyDrop};
+use std::{ffi::c_void, mem::ManuallyDrop, sync::Arc};
 
 use crossbeam_channel::Receiver;
+use parking_lot::Mutex;
 use windows::{
     core::Interface,
     Win32::{
@@ -22,11 +23,11 @@ use windows::{
             },
             Dxgi::{
                 Common::{
-                    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_RATIONAL,
-                    DXGI_SAMPLE_DESC,
+                    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
+                    DXGI_RATIONAL, DXGI_SAMPLE_DESC,
                 },
                 IDXGIAdapter, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1, DXGI_PRESENT,
-                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_FLAG, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 DXGI_USAGE_RENDER_TARGET_OUTPUT,
             },
         },
@@ -34,6 +35,9 @@ use windows::{
 };
 
 use crate::{CameraError, VideoDimensions};
+
+// Latest output size requested by the UI, consumed by the render thread
+pub type PendingSize = Arc<Mutex<Option<(u32, u32)>>>;
 
 pub struct InnerNativeRenderer {
     device1: ID3D11Device1,
@@ -128,6 +132,7 @@ impl InnerNativeRenderer {
         &self,
         input_dim: VideoDimensions,
         receiver: Receiver<u64>,
+        pending_size: PendingSize,
     ) -> Result<(), CameraError> {
         let input_desc: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC =
             D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
@@ -148,37 +153,25 @@ impl InnerNativeRenderer {
             },
         };
 
-        let swap_chain_desc1 = unsafe { self.swap_chain.GetDesc1() }?;
-
-        let content_desc = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
-            InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
-            InputFrameRate: DXGI_RATIONAL {
-                Numerator: 60,
-                Denominator: 1,
-            },
-            InputWidth: input_dim.width,
-            InputHeight: input_dim.height,
-            OutputFrameRate: DXGI_RATIONAL {
-                Numerator: 60,
-                Denominator: 1,
-            },
-            OutputWidth: swap_chain_desc1.Width,
-            OutputHeight: swap_chain_desc1.Height,
-            Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
-        };
-
         let video_device: ID3D11VideoDevice = self.device1.cast()?;
         let video_context: ID3D11VideoContext = self.context1.cast()?;
 
-        let video_enum: ID3D11VideoProcessorEnumerator =
-            unsafe { video_device.CreateVideoProcessorEnumerator(&content_desc) }?;
-
-        // Create Processor from enumerator
-        let video_processor: ID3D11VideoProcessor =
-            unsafe { video_device.CreateVideoProcessor(&video_enum, 0) }?;
+        let swap_chain_desc1 = unsafe { self.swap_chain.GetDesc1() }?;
+        let (mut video_enum, mut video_processor) = Self::create_video_processor(
+            &video_device,
+            &input_dim,
+            swap_chain_desc1.Width,
+            swap_chain_desc1.Height,
+        )?;
 
         // 3. Empties handle's queue (u64) pending to be sent by camera
         while let Ok(handle_u64) = receiver.recv() {
+            // Apply pending resize before rendering, while no back buffer reference is held
+            if let Some((width, height)) = pending_size.lock().take() {
+                (video_enum, video_processor) =
+                    self.resize(&video_device, &input_dim, width, height)?;
+            }
+
             unsafe {
                 let handle = windows::Win32::Foundation::HANDLE(handle_u64 as *mut _);
 
@@ -239,6 +232,65 @@ impl InnerNativeRenderer {
         }
 
         Ok(())
+    }
+
+    fn create_video_processor(
+        video_device: &ID3D11VideoDevice,
+        input_dim: &VideoDimensions,
+        output_width: u32,
+        output_height: u32,
+    ) -> Result<(ID3D11VideoProcessorEnumerator, ID3D11VideoProcessor), CameraError> {
+        let content_desc = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
+            InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
+            InputFrameRate: DXGI_RATIONAL {
+                Numerator: 60,
+                Denominator: 1,
+            },
+            InputWidth: input_dim.width,
+            InputHeight: input_dim.height,
+            OutputFrameRate: DXGI_RATIONAL {
+                Numerator: 60,
+                Denominator: 1,
+            },
+            OutputWidth: output_width,
+            OutputHeight: output_height,
+            Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
+        };
+
+        let video_enum: ID3D11VideoProcessorEnumerator =
+            unsafe { video_device.CreateVideoProcessorEnumerator(&content_desc) }?;
+
+        // Create Processor from enumerator
+        let video_processor: ID3D11VideoProcessor =
+            unsafe { video_device.CreateVideoProcessor(&video_enum, 0) }?;
+
+        Ok((video_enum, video_processor))
+    }
+
+    fn resize(
+        &self,
+        video_device: &ID3D11VideoDevice,
+        input_dim: &VideoDimensions,
+        width: u32,
+        height: u32,
+    ) -> Result<(ID3D11VideoProcessorEnumerator, ID3D11VideoProcessor), CameraError> {
+        unsafe {
+            // Release any pending reference to the back buffers before resizing them
+            self.context1.ClearState();
+            self.context1.Flush();
+
+            // 0 / UNKNOWN keep the current buffer count and format
+            self.swap_chain.ResizeBuffers(
+                0,
+                width,
+                height,
+                DXGI_FORMAT_UNKNOWN,
+                DXGI_SWAP_CHAIN_FLAG(0),
+            )?;
+        }
+
+        // Video processor is bound to the output size, so it must be recreated
+        Self::create_video_processor(video_device, input_dim, width, height)
     }
 
     pub fn stop(&self) {

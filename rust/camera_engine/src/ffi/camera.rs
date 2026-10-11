@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{ffi::c_void, sync::Arc, thread::JoinHandle};
 
 use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 use crate::{
     win32::{renderer::PendingSize, InnerNativeCapture, InnerNativeRenderer},
@@ -14,6 +15,13 @@ pub struct CameraController {
     sender: Sender<u64>,
     receiver: Receiver<u64>,
     pending_size: PendingSize,
+    render_thread: Mutex<Option<RenderThread>>,
+}
+
+struct RenderThread {
+    // Dropping it wakes the render loop and makes it exit
+    shutdown: Sender<()>,
+    handle: JoinHandle<()>,
 }
 
 #[uniffi::export]
@@ -28,6 +36,7 @@ impl CameraController {
             sender,
             receiver,
             pending_size: Arc::new(Mutex::new(None)),
+            render_thread: Mutex::new(None),
         })
     }
 
@@ -43,10 +52,12 @@ impl CameraController {
         let renderer = InnerNativeRenderer::new(hwnd_raw, width, height)?;
         let receiver = self.receiver.clone();
         let pending_size = self.pending_size.clone();
-        std::thread::spawn(move || {
-            let _ = renderer.start(input_dim, receiver, pending_size);
+        let (shutdown, shutdown_receiver) = bounded::<()>(1);
+        let handle = std::thread::spawn(move || {
+            let _ = renderer.start(input_dim, receiver, shutdown_receiver, pending_size);
             renderer.stop();
         });
+        *self.render_thread.lock() = Some(RenderThread { shutdown, handle });
 
         Ok(())
     }
@@ -63,6 +74,20 @@ impl CameraController {
         let capture_opt = self.capture.lock().take();
         if let Some(capture) = capture_opt {
             capture.stop().await?;
+        }
+
+        let render_thread = self.render_thread.lock().take();
+        if let Some(RenderThread { shutdown, handle }) = render_thread {
+            drop(shutdown);
+            // Loop exits right away, at most after finishing the current frame
+            let _ = handle.join();
+        }
+
+        // Close handles left in the queue so they don't leak or show up on the next start
+        while let Ok(handle_u64) = self.receiver.try_recv() {
+            unsafe {
+                let _ = CloseHandle(HANDLE(handle_u64 as *mut c_void));
+            }
         }
 
         Ok(())

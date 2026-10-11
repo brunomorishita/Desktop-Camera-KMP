@@ -1,6 +1,6 @@
 use std::{ffi::c_void, mem::ManuallyDrop, sync::Arc};
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{select, Receiver};
 use parking_lot::Mutex;
 use windows::{
     core::Interface,
@@ -132,6 +132,7 @@ impl InnerNativeRenderer {
         &self,
         input_dim: VideoDimensions,
         receiver: Receiver<u64>,
+        shutdown: Receiver<()>,
         pending_size: PendingSize,
     ) -> Result<(), CameraError> {
         let input_desc: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC =
@@ -164,8 +165,17 @@ impl InnerNativeRenderer {
             swap_chain_desc1.Height,
         )?;
 
-        // 3. Empties handle's queue (u64) pending to be sent by camera
-        while let Ok(handle_u64) = receiver.recv() {
+        // 3. Empties handle's queue (u64) pending to be sent by camera, until shutdown is signaled
+        // (message sent or sender dropped)
+        loop {
+            let handle_u64 = select! {
+                recv(receiver) -> msg => match msg {
+                    Ok(handle_u64) => handle_u64,
+                    Err(_) => break,
+                },
+                recv(shutdown) -> _ => break,
+            };
+
             // Apply pending resize before rendering, while no back buffer reference is held
             if let Some((width, height)) = pending_size.lock().take() {
                 (video_enum, video_processor) =

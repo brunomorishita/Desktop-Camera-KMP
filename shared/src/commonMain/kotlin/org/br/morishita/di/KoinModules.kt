@@ -1,6 +1,7 @@
 package org.br.morishita.di
 
 import org.br.morishita.CameraViewModel
+import org.br.morishita.TransmitViewModel
 import org.koin.core.context.GlobalContext.startKoin
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -9,6 +10,7 @@ import org.koin.core.module.Module
 
 val viewModelModule = module {
     viewModel { CameraViewModel(cameraService = get()) }
+    viewModel { TransmitViewModel(cameraService = get()) }
 }
 
 expect val platformModule: Module

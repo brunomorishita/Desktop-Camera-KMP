@@ -43,4 +43,19 @@ class WindowsCameraService : CameraService {
             throw e
         }
     }
+
+    override suspend fun startStreaming(port: UShort, bitrate: UInt): String {
+        try {
+            return controller.startStreaming(port, bitrate)
+        } catch (e: Exception) {
+            println("Error starting RTSP streaming natively: ${e.message}")
+            throw e
+        }
+    }
+
+    override fun stopStreaming() {
+        controller.stopStreaming()
+    }
+
+    override fun streamingClients(): UInt = controller.streamingClients()
 }

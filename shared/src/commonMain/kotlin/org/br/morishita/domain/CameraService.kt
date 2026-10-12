@@ -6,7 +6,12 @@ interface CameraService {
     fun detachPreview(hwndPointer: ULong)
     fun resizePreview(hwndPointer: ULong, width: UInt, height: UInt)
 
-    // Camera starts only if some preview is using it
+    // Camera starts only if some preview or stream is using it
     suspend fun startCapture()
     suspend fun releaseIfIdle()
+
+    // RTSP: returns the stream URL
+    suspend fun startStreaming(port: UShort, bitrate: UInt): String
+    fun stopStreaming()
+    fun streamingClients(): UInt
 }

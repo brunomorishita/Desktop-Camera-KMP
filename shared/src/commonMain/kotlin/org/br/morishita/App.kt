@@ -81,7 +81,7 @@ fun App() {
                             CameraScreen()
                         }
                         is Route.Transmit -> NavEntry(key) {
-                            Text("NOT IMPLEMENTED YET")
+                            TransmitScreen()
                         }
                     }
                 }

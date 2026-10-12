@@ -4,6 +4,7 @@ use crossbeam_channel::{bounded, Sender};
 use parking_lot::Mutex;
 
 use crate::{
+    ffi::rtsp_transmitter::Streaming,
     win32::{
         capture::FrameRate,
         device::GpuDevice,
@@ -14,8 +15,8 @@ use crate::{
     CameraError, VideoDimensions,
 };
 
-// One camera capture shared by every consumer (preview windows, by HWND).
-// Capture starts on start_capture() and stops on release_if_idle() after
+// One camera capture shared by every consumer: preview windows (by HWND) and RTSP streaming.
+// Capture starts on start_capture()/start_streaming() and stops on release_if_idle() after
 // the last consumer is gone
 #[derive(uniffi::Object)]
 pub struct CameraController {
@@ -25,6 +26,7 @@ pub struct CameraController {
     // added against the capture being released
     pub(crate) capture: tokio::sync::Mutex<Option<InnerNativeCapture>>,
     previews: Mutex<HashMap<u64, Preview>>,
+    pub(crate) streaming: Mutex<Option<Streaming>>,
 }
 
 struct Preview {
@@ -54,6 +56,7 @@ impl CameraController {
             hub: Arc::new(FrameHub::default()),
             capture: tokio::sync::Mutex::new(None),
             previews: Mutex::new(HashMap::new()),
+            streaming: Mutex::new(None),
         })
     }
 
@@ -123,7 +126,7 @@ impl CameraController {
         Ok(())
     }
 
-    /// Stops the camera when no preview is using it anymore
+    /// Stops the camera when no preview nor streaming is using it anymore
     pub async fn release_if_idle(&self) -> Result<(), CameraError> {
         let mut capture = self.capture.lock().await;
 
@@ -142,13 +145,14 @@ impl CameraController {
         for hwnd_raw in previews {
             self.detach_preview(hwnd_raw);
         }
+        self.stop_streaming();
         self.release_if_idle().await
     }
 }
 
 impl CameraController {
     fn is_idle(&self) -> bool {
-        self.previews.lock().is_empty()
+        self.previews.lock().is_empty() && self.streaming.lock().is_none()
     }
 
     pub(crate) fn gpu(&self) -> Result<GpuDevice, CameraError> {

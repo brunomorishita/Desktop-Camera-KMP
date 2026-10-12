@@ -1,4 +1,5 @@
 mod ffi;
+mod rtsp;
 mod win32;
 
 // Re-exporta a camada FFI para que o UniFFI consiga encontrar tudo

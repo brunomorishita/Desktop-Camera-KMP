@@ -1,5 +1,6 @@
 pub(crate) mod capture;
 pub(crate) mod device;
+pub(crate) mod encoder;
 pub(crate) mod frame;
 pub(crate) mod renderer;
 

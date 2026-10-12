@@ -1,4 +1,6 @@
 pub(crate) mod capture;
+pub(crate) mod device;
+pub(crate) mod frame;
 pub(crate) mod renderer;
 
 // Re-exporta as structs principais para simplificar as chamadas internas

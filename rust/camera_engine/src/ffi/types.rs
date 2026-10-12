@@ -27,7 +27,7 @@ pub struct FrameGpuShared {
     pub height: u32,
 }
 
-#[derive(uniffi::Record)]
+#[derive(uniffi::Record, Debug, Clone, Copy)]
 pub struct VideoDimensions {
     pub width: u32,
     pub height: u32,

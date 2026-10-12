@@ -5,91 +5,66 @@ use parking_lot::Mutex;
 use windows::{
     core::Interface,
     Win32::{
-        Foundation::{HMODULE, HWND},
+        Foundation::{HWND, RECT},
         Graphics::{
-            Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_11_1},
             Direct3D11::{
-                D3D11CreateDevice, ID3D11Device, ID3D11Device1, ID3D11DeviceContext,
-                ID3D11DeviceContext1, ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice,
-                ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator,
-                ID3D11VideoProcessorInputView, ID3D11VideoProcessorOutputView,
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11_TEX2D_VPIV,
-                D3D11_TEX2D_VPOV, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
-                D3D11_VIDEO_PROCESSOR_CONTENT_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC,
-                D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC,
-                D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_STREAM,
-                D3D11_VIDEO_USAGE_PLAYBACK_NORMAL, D3D11_VPIV_DIMENSION_TEXTURE2D,
-                D3D11_VPOV_DIMENSION_TEXTURE2D,
+                ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor,
+                ID3D11VideoProcessorEnumerator, ID3D11VideoProcessorInputView,
+                ID3D11VideoProcessorOutputView, D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV,
+                D3D11_VIDEO_COLOR, D3D11_VIDEO_COLOR_0, D3D11_VIDEO_COLOR_RGBA,
+                D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
+                D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
+                D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
+                D3D11_VIDEO_PROCESSOR_STREAM, D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
+                D3D11_VPIV_DIMENSION_TEXTURE2D, D3D11_VPOV_DIMENSION_TEXTURE2D,
             },
             Dxgi::{
                 Common::{
                     DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
                     DXGI_RATIONAL, DXGI_SAMPLE_DESC,
                 },
-                IDXGIAdapter, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1, DXGI_PRESENT,
-                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_FLAG, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                IDXGIFactory2, IDXGISwapChain1, DXGI_PRESENT, DXGI_SCALING_STRETCH,
+                DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG, DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 DXGI_USAGE_RENDER_TARGET_OUTPUT,
             },
         },
     },
 };
 
-use crate::{CameraError, VideoDimensions};
+use crate::{
+    win32::{device::GpuDevice, frame::SharedFrame},
+    CameraError,
+};
 
 // Latest output size requested by the UI, consumed by the render thread
 pub type PendingSize = Arc<Mutex<Option<(u32, u32)>>>;
 
+// Frame pool has a fixed set of textures, so input views can be cached per texture
+const MAX_CACHED_INPUT_VIEWS: usize = 16;
+
 pub struct InnerNativeRenderer {
-    device1: ID3D11Device1,
-    context1: ID3D11DeviceContext1,
+    gpu: GpuDevice,
     swap_chain: IDXGISwapChain1,
 }
 
+// Video processor objects, bound to the input size and the swap chain size
+struct Processor {
+    input_width: u32,
+    input_height: u32,
+    enumerator: ID3D11VideoProcessorEnumerator,
+    processor: ID3D11VideoProcessor,
+    output_view: ID3D11VideoProcessorOutputView,
+    input_views: Vec<(ID3D11Texture2D, ID3D11VideoProcessorInputView)>,
+}
+
 impl InnerNativeRenderer {
-    pub fn new(hwnd_raw: u64, width: u32, height: u32) -> Result<Self, CameraError> {
-        let hwnd_ptr = hwnd_raw as *mut c_void;
-        let hwnd = HWND(hwnd_ptr);
+    pub fn new(gpu: GpuDevice, hwnd_raw: u64, width: u32, height: u32) -> Result<Self, CameraError> {
+        let hwnd = HWND(hwnd_raw as *mut c_void);
 
-        let mut device: Option<ID3D11Device> = None;
-        let mut context: Option<ID3D11DeviceContext> = None;
+        // Navigate COM graph to get modern Factory (IDXGIFactory2)
+        let factory: IDXGIFactory2 = unsafe { gpu.adapter()?.GetParent() }?;
 
-        let mut flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-
-        // Enabling Debug Layer for development build (debug)
-        #[cfg(debug_assertions)]
-        {
-            use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_DEBUG;
-
-            flags |= D3D11_CREATE_DEVICE_DEBUG;
-        }
-
-        unsafe {
-            D3D11CreateDevice(
-                None,                     // Default adapter (primary GPU)
-                D3D_DRIVER_TYPE_HARDWARE, // Hardware Aceleration
-                HMODULE::default(),
-                flags, // Essential for GDI / Direct2D interoperability
-                Some(&[D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0]), // Resource levels
-                D3D11_SDK_VERSION,
-                Some(&mut device),
-                None,
-                Some(&mut context),
-            )
-        }?;
-
-        let device = device.ok_or_else(|| CameraError::CommonError {
-            msg: "Failed to get device".to_string(),
-        })?;
-        let context = context.ok_or_else(|| CameraError::CommonError {
-            msg: "Failed to get device context".to_string(),
-        })?;
-
-        // 2. Navigate COM graph to get modern Factory (IDXGIFactory2)
-        let dxgi_device: IDXGIDevice = device.cast()?;
-        let adapter: IDXGIAdapter = unsafe { dxgi_device.GetAdapter() }?;
-        let factory: IDXGIFactory2 = unsafe { adapter.GetParent() }?;
-
-        // 3. Configure modern SwapChain (DESC1)
+        // Configure modern SwapChain (DESC1)
         let swapchain_desc = DXGI_SWAP_CHAIN_DESC1 {
             Width: width,
             Height: height,
@@ -107,10 +82,9 @@ impl InnerNativeRenderer {
             Flags: 0,
         };
 
-        // 4. Create IDXGISwapChain1
-        let swapchain1: IDXGISwapChain1 = unsafe {
+        let swap_chain = unsafe {
             factory.CreateSwapChainForHwnd(
-                &device,
+                &gpu.device,
                 hwnd,
                 &swapchain_desc,
                 None, // Opcional: Fullscreen desc
@@ -118,122 +92,65 @@ impl InnerNativeRenderer {
             )
         }?;
 
-        let device1: ID3D11Device1 = device.cast()?;
-        let context1: ID3D11DeviceContext1 = context.cast()?;
-
-        Ok(InnerNativeRenderer {
-            device1,
-            context1,
-            swap_chain: swapchain1,
-        })
+        Ok(InnerNativeRenderer { gpu, swap_chain })
     }
 
     pub fn start(
         &self,
-        input_dim: VideoDimensions,
-        receiver: Receiver<u64>,
+        frames: Receiver<SharedFrame>,
         shutdown: Receiver<()>,
         pending_size: PendingSize,
     ) -> Result<(), CameraError> {
-        let input_desc: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC =
-            D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
-                FourCC: 0, // 0 tell DirectX to use the same DXGI_FORMAT of texture_desc (ex: NV12)
-                ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
-                Anonymous: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0 {
-                    Texture2D: D3D11_TEX2D_VPIV {
-                        MipSlice: 0,
-                        ArraySlice: 0,
-                    },
-                },
-            };
+        let video_device: ID3D11VideoDevice = self.gpu.device.cast()?;
+        let video_context: ID3D11VideoContext = self.gpu.context.cast()?;
+        let mut processor: Option<Processor> = None;
 
-        let output_desc = D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
-            ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
-            Anonymous: D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0 {
-                Texture2D: D3D11_TEX2D_VPOV { MipSlice: 0 },
-            },
-        };
-
-        let video_device: ID3D11VideoDevice = self.device1.cast()?;
-        let video_context: ID3D11VideoContext = self.context1.cast()?;
-
-        let swap_chain_desc1 = unsafe { self.swap_chain.GetDesc1() }?;
-        let (mut video_enum, mut video_processor) = Self::create_video_processor(
-            &video_device,
-            &input_dim,
-            swap_chain_desc1.Width,
-            swap_chain_desc1.Height,
-        )?;
-
-        // 3. Empties handle's queue (u64) pending to be sent by camera, until shutdown is signaled
-        // (message sent or sender dropped)
+        // Render every frame received until shutdown is signaled (message sent or sender dropped)
         loop {
-            let handle_u64 = select! {
-                recv(receiver) -> msg => match msg {
-                    Ok(handle_u64) => handle_u64,
+            let frame = select! {
+                recv(frames) -> msg => match msg {
+                    Ok(frame) => frame,
                     Err(_) => break,
                 },
                 recv(shutdown) -> _ => break,
             };
 
-            // Apply pending resize before rendering, while no back buffer reference is held
+            // Apply pending resize before rendering, releasing the back buffer view first
             if let Some((width, height)) = pending_size.lock().take() {
-                (video_enum, video_processor) =
-                    self.resize(&video_device, &input_dim, width, height)?;
+                processor = None;
+                self.resize(width, height)?;
             }
 
+            let current = match processor.take() {
+                Some(p) if p.input_width == frame.width() && p.input_height == frame.height() => p,
+                _ => self.create_processor(
+                    &video_device,
+                    &video_context,
+                    frame.width(),
+                    frame.height(),
+                )?,
+            };
+            let current = processor.insert(current);
+
+            let input_view = current.input_view(&video_device, frame.texture())?;
+
             unsafe {
-                let handle = windows::Win32::Foundation::HANDLE(handle_u64 as *mut _);
-
-                // Access private member from InnerNativeRenderer
-                let frame_texture: ID3D11Texture2D =
-                    self.device1.OpenSharedResource1(handle).inspect_err(|_| {
-                        let _ = windows::Win32::Foundation::CloseHandle(handle);
-                    })?;
-
-                // Free native NT Handle immediately after Direct3D's opening
-                let _ = windows::Win32::Foundation::CloseHandle(handle);
-
-                let mut input_view: Option<ID3D11VideoProcessorInputView> = None;
-                video_device.CreateVideoProcessorInputView(
-                    &frame_texture,
-                    &video_enum,
-                    &input_desc,
-                    Some(&mut input_view),
-                )?;
-
-                // Get SwapChain's Back Buffer
-                let back_buffer_texture: ID3D11Texture2D = self.swap_chain.GetBuffer(0)?;
-
-                let mut output_view: Option<ID3D11VideoProcessorOutputView> = None;
-
-                video_device.CreateVideoProcessorOutputView(
-                    &back_buffer_texture, // 1. Recurso de saída (BackBuffer da SwapChain)
-                    &video_enum,
-                    &output_desc, // 2. Ponteiro para D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC
-                    Some(&mut output_view), // 3. Ponteiro de saída
-                )?;
-
-                let input_view: ManuallyDrop<Option<ID3D11VideoProcessorInputView>> =
-                    ManuallyDrop::new(input_view);
-
-                // 6. Prepare Stream's args for a GPU
-                let stream_data = D3D11_VIDEO_PROCESSOR_STREAM {
+                // Prepare Stream's args for a GPU
+                let streams = [D3D11_VIDEO_PROCESSOR_STREAM {
                     Enable: true.into(),
-                    pInputSurface: input_view, // <--- A View da sua textura entra na GPU aqui!
+                    pInputSurface: ManuallyDrop::new(Some(input_view)),
                     ..Default::default()
-                };
+                }];
 
-                let output_view = output_view.ok_or_else(|| CameraError::CommonError {
-                    msg: "Failed to load output view".to_string(),
-                })?;
+                // GPU runs a NV12 -> BGRA8 conversion and scaling by Hardware
+                let blt_result = video_context.VideoProcessorBlt(
+                    &current.processor,
+                    &current.output_view,
+                    0,
+                    &streams,
+                );
 
-                // 7. GPU runs a NV12 -> BGRA8 conversion by Hardware
-                let streams = [stream_data];
-                let blt_result =
-                    video_context.VideoProcessorBlt(&video_processor, &output_view, 0, &streams);
-
-                // Release input view (and the camera texture it holds), even if Blt failed
+                // Release the reference added to the input view above, even if Blt failed
                 let [stream_data] = streams;
                 drop(ManuallyDrop::into_inner(stream_data.pInputSurface));
                 blt_result?;
@@ -241,25 +158,32 @@ impl InnerNativeRenderer {
                 // Show frame at Swing's HWND
                 self.swap_chain.Present(1, DXGI_PRESENT(0)).ok()?;
             }
+
+            // Texture can go back to the pool: Blt was already queued on the shared context
+            drop(frame);
         }
 
         Ok(())
     }
 
-    fn create_video_processor(
+    fn create_processor(
+        &self,
         video_device: &ID3D11VideoDevice,
-        input_dim: &VideoDimensions,
-        output_width: u32,
-        output_height: u32,
-    ) -> Result<(ID3D11VideoProcessorEnumerator, ID3D11VideoProcessor), CameraError> {
+        video_context: &ID3D11VideoContext,
+        input_width: u32,
+        input_height: u32,
+    ) -> Result<Processor, CameraError> {
+        let swap_chain_desc = unsafe { self.swap_chain.GetDesc1() }?;
+        let (output_width, output_height) = (swap_chain_desc.Width, swap_chain_desc.Height);
+
         let content_desc = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
             InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
             InputFrameRate: DXGI_RATIONAL {
                 Numerator: 60,
                 Denominator: 1,
             },
-            InputWidth: input_dim.width,
-            InputHeight: input_dim.height,
+            InputWidth: input_width,
+            InputHeight: input_height,
             OutputFrameRate: DXGI_RATIONAL {
                 Numerator: 60,
                 Denominator: 1,
@@ -269,27 +193,73 @@ impl InnerNativeRenderer {
             Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
         };
 
-        let video_enum: ID3D11VideoProcessorEnumerator =
+        let enumerator: ID3D11VideoProcessorEnumerator =
             unsafe { video_device.CreateVideoProcessorEnumerator(&content_desc) }?;
 
         // Create Processor from enumerator
-        let video_processor: ID3D11VideoProcessor =
-            unsafe { video_device.CreateVideoProcessor(&video_enum, 0) }?;
+        let processor: ID3D11VideoProcessor =
+            unsafe { video_device.CreateVideoProcessor(&enumerator, 0) }?;
 
-        Ok((video_enum, video_processor))
+        // With flip model, buffer 0 always refers to the current back buffer,
+        // so a single output view stays valid until the next resize
+        let back_buffer: ID3D11Texture2D = unsafe { self.swap_chain.GetBuffer(0) }?;
+        let output_desc = D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
+            ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
+            Anonymous: D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0 {
+                Texture2D: D3D11_TEX2D_VPOV { MipSlice: 0 },
+            },
+        };
+        let mut output_view: Option<ID3D11VideoProcessorOutputView> = None;
+        unsafe {
+            video_device.CreateVideoProcessorOutputView(
+                &back_buffer,
+                &enumerator,
+                &output_desc,
+                Some(&mut output_view),
+            )
+        }?;
+        let output_view = output_view.ok_or_else(|| CameraError::CommonError {
+            msg: "Failed to load output view".to_string(),
+        })?;
+
+        // Keep the camera aspect ratio: image centered, black bars on the remaining area
+        let target_rect = RECT {
+            left: 0,
+            top: 0,
+            right: output_width as i32,
+            bottom: output_height as i32,
+        };
+        let dest_rect = letterbox(input_width, input_height, output_width, output_height);
+        let black = D3D11_VIDEO_COLOR {
+            Anonymous: D3D11_VIDEO_COLOR_0 {
+                RGBA: D3D11_VIDEO_COLOR_RGBA {
+                    R: 0.0,
+                    G: 0.0,
+                    B: 0.0,
+                    A: 1.0,
+                },
+            },
+        };
+        unsafe {
+            video_context.VideoProcessorSetOutputTargetRect(&processor, true, Some(&target_rect));
+            video_context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&dest_rect));
+            video_context.VideoProcessorSetOutputBackgroundColor(&processor, false, &black);
+        }
+
+        Ok(Processor {
+            input_width,
+            input_height,
+            enumerator,
+            processor,
+            output_view,
+            input_views: Vec::new(),
+        })
     }
 
-    fn resize(
-        &self,
-        video_device: &ID3D11VideoDevice,
-        input_dim: &VideoDimensions,
-        width: u32,
-        height: u32,
-    ) -> Result<(ID3D11VideoProcessorEnumerator, ID3D11VideoProcessor), CameraError> {
+    fn resize(&self, width: u32, height: u32) -> Result<(), CameraError> {
         unsafe {
-            // Release any pending reference to the back buffers before resizing them
-            self.context1.ClearState();
-            self.context1.Flush();
+            // Destroy the dropped back buffer view now, ResizeBuffers fails while it is alive
+            self.gpu.context.Flush();
 
             // 0 / UNKNOWN keep the current buffer count and format
             self.swap_chain.ResizeBuffers(
@@ -301,14 +271,73 @@ impl InnerNativeRenderer {
             )?;
         }
 
-        // Video processor is bound to the output size, so it must be recreated
-        Self::create_video_processor(video_device, input_dim, width, height)
+        Ok(())
     }
 
     pub fn stop(&self) {
         unsafe {
-            self.context1.ClearState();
-            self.context1.Flush();
+            self.gpu.context.Flush();
         }
+    }
+}
+
+impl Processor {
+    fn input_view(
+        &mut self,
+        video_device: &ID3D11VideoDevice,
+        texture: &ID3D11Texture2D,
+    ) -> Result<ID3D11VideoProcessorInputView, CameraError> {
+        if let Some((_, view)) = self.input_views.iter().find(|(t, _)| t == texture) {
+            return Ok(view.clone());
+        }
+
+        let input_desc = D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
+            FourCC: 0, // 0 tell DirectX to use the same DXGI_FORMAT of texture_desc (ex: NV12)
+            ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
+            Anonymous: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0 {
+                Texture2D: D3D11_TEX2D_VPIV {
+                    MipSlice: 0,
+                    ArraySlice: 0,
+                },
+            },
+        };
+
+        let mut view: Option<ID3D11VideoProcessorInputView> = None;
+        unsafe {
+            video_device.CreateVideoProcessorInputView(
+                texture,
+                &self.enumerator,
+                &input_desc,
+                Some(&mut view),
+            )
+        }?;
+        let view = view.ok_or_else(|| CameraError::CommonError {
+            msg: "Failed to create input view".to_string(),
+        })?;
+
+        if self.input_views.len() >= MAX_CACHED_INPUT_VIEWS {
+            self.input_views.clear();
+        }
+        self.input_views.push((texture.clone(), view.clone()));
+
+        Ok(view)
+    }
+}
+
+fn letterbox(input_width: u32, input_height: u32, output_width: u32, output_height: u32) -> RECT {
+    let scale = f64::min(
+        output_width as f64 / input_width as f64,
+        output_height as f64 / input_height as f64,
+    );
+    let width = (input_width as f64 * scale).round() as i32;
+    let height = (input_height as f64 * scale).round() as i32;
+    let left = (output_width as i32 - width) / 2;
+    let top = (output_height as i32 - height) / 2;
+
+    RECT {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
     }
 }

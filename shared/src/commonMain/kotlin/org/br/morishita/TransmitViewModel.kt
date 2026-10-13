@@ -13,10 +13,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.br.morishita.domain.CameraService
+import org.br.morishita.domain.NetworkAddress
+import org.br.morishita.domain.NetworkService
+import org.br.morishita.domain.StreamSettings
 import kotlin.time.Duration.Companion.seconds
 
 data class TransmitUiState(
     val status: Status = Status.Stopped,
+    val settings: StreamSettings = StreamSettings(),
     val url: String? = null,
     val clients: UInt = 0u,
     val error: String? = null,
@@ -25,7 +29,8 @@ data class TransmitUiState(
 }
 
 class TransmitViewModel(
-    private val cameraService: CameraService
+    private val cameraService: CameraService,
+    private val networkService: NetworkService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransmitUiState())
@@ -35,16 +40,24 @@ class TransmitViewModel(
 
     fun start() {
         if (_state.value.status != TransmitUiState.Status.Stopped) return
-        _state.value = TransmitUiState(status = TransmitUiState.Status.Starting)
+        val settings = _state.value.settings
+        _state.value = TransmitUiState(status = TransmitUiState.Status.Starting, settings = settings)
 
         streamingJob = viewModelScope.launch(Dispatchers.Default) {
             val url = try {
-                cameraService.startStreaming(RTSP_PORT, BITRATE)
+                cameraService.startStreaming(settings)
             } catch (e: Exception) {
-                _state.value = TransmitUiState(error = e.message ?: "Falha ao iniciar a transmissão")
+                _state.value = TransmitUiState(
+                    settings = settings,
+                    error = e.message ?: "Falha ao iniciar a transmissão"
+                )
                 return@launch
             }
-            _state.value = TransmitUiState(status = TransmitUiState.Status.Streaming, url = url)
+            _state.value = TransmitUiState(
+                status = TransmitUiState.Status.Streaming,
+                settings = settings,
+                url = url
+            )
 
             // Rust only exposes a counter, polling it is simpler than a callback per connection
             while (isActive) {
@@ -57,7 +70,7 @@ class TransmitViewModel(
     fun stop() {
         val job = streamingJob ?: return
         streamingJob = null
-        _state.value = TransmitUiState()
+        _state.value = TransmitUiState(settings = _state.value.settings)
 
         viewModelScope.launch(Dispatchers.Default) {
             // A start still running must finish (or be cancelled) before stopping
@@ -67,8 +80,12 @@ class TransmitViewModel(
         }
     }
 
-    companion object {
-        const val RTSP_PORT: UShort = 8554u
-        const val BITRATE: UInt = 4_000_000u
+    // Applied on the next start; the running stream keeps its settings
+    fun updateSettings(settings: StreamSettings) {
+        if (_state.value.status != TransmitUiState.Status.Stopped) return
+        _state.update { it.copy(settings = settings, error = null) }
     }
+
+    fun networkAddresses(): List<NetworkAddress> =
+        runCatching { networkService.ipv4Addresses() }.getOrDefault(emptyList())
 }

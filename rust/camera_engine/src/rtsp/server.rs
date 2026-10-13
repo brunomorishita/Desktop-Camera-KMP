@@ -21,7 +21,7 @@ use super::{
     h264::{AccessUnit, AccessUnitBuilder, ParameterSets},
     rtp::{random_u32, RtpPacketizer, PAYLOAD_TYPE},
 };
-use crate::{win32::encoder::EncodedFrame, CameraError};
+use crate::{win32::encoder::EncodedFrame, CameraError, StreamTransport};
 
 // Access units buffered per client before it is considered behind
 const BROADCAST_CAPACITY: usize = 64;
@@ -75,8 +75,10 @@ pub struct RtspServer {
 
 impl RtspServer {
     pub fn start(
+        bind_address: Ipv4Addr,
         port: u16,
         path: &str,
+        transport: StreamTransport,
         publisher: &StreamPublisher,
         request_keyframe: KeyframeRequest,
     ) -> Result<Self, CameraError> {
@@ -88,9 +90,9 @@ impl RtspServer {
             .map_err(stream_error)?;
 
         // Bound synchronously so "port in use" reaches the caller
-        let listener = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).map_err(stream_error)?;
+        let listener = std::net::TcpListener::bind((bind_address, port)).map_err(stream_error)?;
         listener.set_nonblocking(true).map_err(stream_error)?;
-        let (rtp_socket, rtcp_socket, server_ports) = bind_udp_pair()?;
+        let (rtp_socket, rtcp_socket, server_ports) = bind_udp_pair(bind_address)?;
 
         let clients = Arc::new(AtomicU32::new(0));
         let (frames, params) = publisher.source();
@@ -108,6 +110,7 @@ impl RtspServer {
                 request_keyframe,
                 rtp_socket: rtp_socket.clone(),
                 server_ports,
+                transport,
                 clients: clients.clone(),
                 path: path.clone(),
             });
@@ -118,10 +121,17 @@ impl RtspServer {
             runtime.spawn(accept_loop(listener, context));
         }
 
+        // Listening everywhere: advertise the address used to reach the network
+        let host = if bind_address.is_unspecified() {
+            local_ip()
+        } else {
+            IpAddr::V4(bind_address)
+        };
+
         Ok(RtspServer {
             runtime: Some(runtime),
             clients,
-            url: format!("rtsp://{}:{}/{}", local_ip(), port, path),
+            url: format!("rtsp://{host}:{port}/{path}"),
         })
     }
 
@@ -145,6 +155,7 @@ struct ServerContext {
     request_keyframe: KeyframeRequest,
     rtp_socket: Arc<UdpSocket>,
     server_ports: (u16, u16),
+    transport: StreamTransport,
     clients: Arc<AtomicU32>,
     path: String,
 }
@@ -366,8 +377,13 @@ impl Session {
                     return error_reply(461, "Unsupported Transport", &cseq);
                 };
                 let ssrc = self.packetizer.lock().ssrc;
+                let tcp = transport_header.contains("RTP/AVP/TCP");
+                // 461 makes clients like FFmpeg and VLC retry with the other transport
+                if !self.context.transport.allows(tcp) {
+                    return error_reply(461, "Unsupported Transport", &cseq);
+                }
 
-                let (transport, reply_transport) = if transport_header.contains("RTP/AVP/TCP") {
+                let (transport, reply_transport) = if tcp {
                     let (channel, _) =
                         parse_pair(transport_header, "interleaved=").unwrap_or((0, 1));
                     (
@@ -639,13 +655,15 @@ fn parse_pair(header: &str, key: &str) -> Option<(u16, u16)> {
     }
 }
 
-fn bind_udp_pair() -> Result<(std::net::UdpSocket, std::net::UdpSocket, (u16, u16)), CameraError> {
+fn bind_udp_pair(
+    bind_address: Ipv4Addr,
+) -> Result<(std::net::UdpSocket, std::net::UdpSocket, (u16, u16)), CameraError> {
     // RTP on an even port and RTCP on the next one
     for rtp_port in (FIRST_RTP_PORT..FIRST_RTP_PORT + 200).step_by(2) {
-        let Ok(rtp) = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, rtp_port)) else {
+        let Ok(rtp) = std::net::UdpSocket::bind((bind_address, rtp_port)) else {
             continue;
         };
-        let Ok(rtcp) = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, rtp_port + 1)) else {
+        let Ok(rtcp) = std::net::UdpSocket::bind((bind_address, rtp_port + 1)) else {
             continue;
         };
         rtp.set_nonblocking(true).map_err(stream_error)?;
@@ -703,5 +721,53 @@ mod tests {
         let header = "RTP/AVP;unicast;client_port=5000-5001";
         assert_eq!(parse_pair(header, "client_port="), Some((5000, 5001)));
         assert_eq!(parse_pair("RTP/AVP/TCP;interleaved=2", "interleaved="), Some((2, 3)));
+    }
+
+    fn setup_status(port: u16, transport: &str) -> String {
+        use std::io::{BufRead, Write};
+
+        let mut stream = std::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        write!(
+            stream,
+            "SETUP rtsp://127.0.0.1:{port}/cam/trackID=0 RTSP/1.0
+CSeq: 1
+Transport: {transport}
+
+"
+        )
+        .unwrap();
+        let mut status = String::new();
+        std::io::BufReader::new(stream).read_line(&mut status).unwrap();
+        status.trim().to_string()
+    }
+
+    #[test]
+    fn rejects_transport_not_allowed() {
+        let publisher = StreamPublisher::new();
+        // The URL needs the real port, so pick a free one instead of binding port 0
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let server = RtspServer::start(
+            Ipv4Addr::LOCALHOST,
+            port,
+            "/cam/",
+            StreamTransport::TcpOnly,
+            &publisher,
+            Arc::new(|| {}),
+        )
+        .unwrap();
+
+        assert_eq!(server.url, format!("rtsp://127.0.0.1:{port}/cam"));
+        assert_eq!(
+            setup_status(port, "RTP/AVP;unicast;client_port=5000-5001"),
+            "RTSP/1.0 461 Unsupported Transport"
+        );
+        assert_eq!(
+            setup_status(port, "RTP/AVP/TCP;unicast;interleaved=0-1"),
+            "RTSP/1.0 200 OK"
+        );
     }
 }

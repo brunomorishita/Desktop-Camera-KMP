@@ -14,6 +14,7 @@ Foundation by building something real. Contributions, questions and suggestions 
 | --- | --- |
 | Live camera preview (GPU-rendered with Direct3D 11) | ✅ Done |
 | RTSP streaming (hardware H.264 encoder, RTP over UDP or TCP) | ✅ Done |
+| Stream settings: interface, port, path, UDP/TCP | ✅ Done |
 | Take snapshots | 🔜 Planned |
 | Record videos | 🔜 Planned |
 | Support for macOS/Linux | 💭 Idea |
@@ -96,8 +97,16 @@ ffplay rtsp://192.168.0.10:8554/camera
 vlc rtsp://192.168.0.10:8554/camera
 ```
 
-Port (`8554`) and bitrate (4 Mbps) are defined in
-[`TransmitViewModel.kt`](shared/src/commonMain/kotlin/org/br/morishita/TransmitViewModel.kt).
+The gear button next to **Transmitir** opens the stream settings (only while stopped):
+
+- **Interface:** which network address to listen on, or all of them (`0.0.0.0`).
+  Pick `127.0.0.1` to keep the stream on this machine.
+- **Porta / Caminho:** the port (default `8554`) and the URL path (default `camera`).
+- **Transporte:** accept RTP over UDP and TCP, or only one of them. Clients asking for
+  the other one get `461 Unsupported Transport`. FFmpeg retries with the allowed one; for
+  other players, force it (e.g. `ffplay -rtsp_transport tcp ...` or VLC's "RTP over RTSP (TCP)").
+
+Settings are kept while the app is open and reset to the defaults on restart.
 If clients on other machines can't connect, check whether Windows Firewall is blocking the port.
 
 ## Project structure
@@ -156,8 +165,9 @@ Every kind of contribution helps: bug reports, ideas, docs and code.
   with `#[uniffi::export]` in `ffi/`, then call the generated binding from
   `WindowsCameraService.kt` and add the method to the `CameraService` interface.
 - **UI changes:** everything lives in `shared/src/commonMain`.
-- **Good first contributions:** the planned features (snapshots, video recording), making the
-  RTSP port/bitrate configurable from the UI, or improving error messages.
+- **Good first contributions:** the planned features (snapshots, video recording), saving the
+  stream settings across restarts, a bitrate option in the settings dialog, or improving
+  error messages.
 
 ### Tips
 

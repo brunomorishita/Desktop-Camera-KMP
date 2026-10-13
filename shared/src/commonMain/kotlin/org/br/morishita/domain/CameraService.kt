@@ -11,7 +11,7 @@ interface CameraService {
     suspend fun releaseIfIdle()
 
     // RTSP: returns the stream URL
-    suspend fun startStreaming(port: UShort, bitrate: UInt): String
+    suspend fun startStreaming(settings: StreamSettings): String
     fun stopStreaming()
     fun streamingClients(): UInt
 }

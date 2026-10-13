@@ -32,3 +32,44 @@ pub struct VideoDimensions {
     pub width: u32,
     pub height: u32,
 }
+
+// Which RTP transports clients may pick in SETUP
+#[derive(uniffi::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamTransport {
+    Any,
+    TcpOnly,
+    UdpOnly,
+}
+
+impl StreamTransport {
+    pub fn allows(self, tcp: bool) -> bool {
+        match self {
+            StreamTransport::Any => true,
+            StreamTransport::TcpOnly => tcp,
+            StreamTransport::UdpOnly => !tcp,
+        }
+    }
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct StreamConfig {
+    /// IPv4 address to listen on, "0.0.0.0" for every interface
+    pub bind_address: String,
+    pub port: u16,
+    /// URL path of the stream, e.g. "camera" -> rtsp://<ip>:<port>/camera
+    pub path: String,
+    pub transport: StreamTransport,
+    pub bitrate: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transport_policy() {
+        assert!(StreamTransport::Any.allows(true) && StreamTransport::Any.allows(false));
+        assert!(StreamTransport::TcpOnly.allows(true) && !StreamTransport::TcpOnly.allows(false));
+        assert!(!StreamTransport::UdpOnly.allows(true) && StreamTransport::UdpOnly.allows(false));
+    }
+}

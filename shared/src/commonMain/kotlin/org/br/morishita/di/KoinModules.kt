@@ -10,7 +10,7 @@ import org.koin.core.module.Module
 
 val viewModelModule = module {
     viewModel { CameraViewModel(cameraService = get()) }
-    viewModel { TransmitViewModel(cameraService = get()) }
+    viewModel { TransmitViewModel(cameraService = get(), networkService = get()) }
 }
 
 expect val platformModule: Module

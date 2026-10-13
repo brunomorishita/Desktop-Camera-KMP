@@ -1,6 +1,9 @@
 package org.br.morishita
 
 import org.br.morishita.domain.CameraService
+import org.br.morishita.domain.StreamSettings
+import org.br.morishita.domain.StreamTransport
+import uniffi.camera_engine.StreamConfig
 
 class WindowsCameraService : CameraService {
     init {
@@ -44,9 +47,20 @@ class WindowsCameraService : CameraService {
         }
     }
 
-    override suspend fun startStreaming(port: UShort, bitrate: UInt): String {
+    override suspend fun startStreaming(settings: StreamSettings): String {
+        val config = StreamConfig(
+            bindAddress = settings.bindAddress,
+            port = settings.port,
+            path = settings.path,
+            transport = when (settings.transport) {
+                StreamTransport.Any -> uniffi.camera_engine.StreamTransport.ANY
+                StreamTransport.TcpOnly -> uniffi.camera_engine.StreamTransport.TCP_ONLY
+                StreamTransport.UdpOnly -> uniffi.camera_engine.StreamTransport.UDP_ONLY
+            },
+            bitrate = settings.bitrate,
+        )
         try {
-            return controller.startStreaming(port, bitrate)
+            return controller.startStreaming(config)
         } catch (e: Exception) {
             println("Error starting RTSP streaming natively: ${e.message}")
             throw e

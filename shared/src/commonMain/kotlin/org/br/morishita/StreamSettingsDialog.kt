@@ -2,9 +2,10 @@ package org.br.morishita
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -15,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,9 +24,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.rememberDialogState
 import org.br.morishita.domain.NetworkAddress
 import org.br.morishita.domain.StreamSettings
 import org.br.morishita.domain.StreamTransport
@@ -58,11 +69,23 @@ fun StreamSettingsDialog(
         bindAddress
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Configurar transmissão") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // A real OS window: Compose dialogs are drawn below the preview's native HWND
+    DialogWindow(
+        onCloseRequest = onDismiss,
+        title = "Configurar transmissão",
+        state = rememberDialogState(size = DpSize(440.dp, Dp.Unspecified)),
+        resizable = false,
+        onPreviewKeyEvent = { event ->
+            val escape = event.key == Key.Escape && event.type == KeyEventType.KeyDown
+            if (escape) onDismiss()
+            escape
+        }
+    ) {
+        Surface {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 AddressDropdown(
                     options = options,
                     selected = bindAddress,
@@ -98,27 +121,28 @@ fun StreamSettingsDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = parsedPort != null && pathValid,
-                onClick = {
-                    onSave(
-                        settings.copy(
-                            bindAddress = bindAddress,
-                            port = parsedPort!!.toUShort(),
-                            path = cleanPath,
-                            transport = transport,
-                        )
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
+                    TextButton(
+                        enabled = parsedPort != null && pathValid,
+                        onClick = {
+                            onSave(
+                                settings.copy(
+                                    bindAddress = bindAddress,
+                                    port = parsedPort!!.toUShort(),
+                                    path = cleanPath,
+                                    transport = transport,
+                                )
+                            )
+                        }
+                    ) { Text("Salvar") }
                 }
-            ) { Text("Salvar") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            }
         }
-    )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

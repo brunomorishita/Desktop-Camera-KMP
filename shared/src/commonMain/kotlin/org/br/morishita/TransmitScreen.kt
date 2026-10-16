@@ -1,6 +1,7 @@
 package org.br.morishita
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,10 +46,15 @@ fun TransmitScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        CameraPreview(
-            viewModel = cameraViewModel,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        )
+        // The preview's native HWND would be drawn over the Compose dialog
+        if (showSettings) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth())
+        } else {
+            CameraPreview(
+                viewModel = cameraViewModel,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+        }
         TransmitControls(
             state = state,
             onStart = transmitViewModel::start,

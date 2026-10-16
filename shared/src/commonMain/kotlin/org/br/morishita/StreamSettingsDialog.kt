@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,16 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogWindow
-import androidx.compose.ui.window.rememberDialogState
+import androidx.compose.ui.window.Dialog
 import org.br.morishita.domain.NetworkAddress
 import org.br.morishita.domain.StreamSettings
 import org.br.morishita.domain.StreamTransport
@@ -69,23 +63,18 @@ fun StreamSettingsDialog(
         bindAddress
     }
 
-    // A real OS window: Compose dialogs are drawn below the preview's native HWND
-    DialogWindow(
-        onCloseRequest = onDismiss,
-        title = "Configurar transmissão",
-        state = rememberDialogState(size = DpSize(440.dp, Dp.Unspecified)),
-        resizable = false,
-        onPreviewKeyEvent = { event ->
-            val escape = event.key == Key.Escape && event.type == KeyEventType.KeyDown
-            if (escape) onDismiss()
-            escape
-        }
-    ) {
-        Surface {
+    // Escape and clicks outside dismiss it (DialogProperties defaults)
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.width(440.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp
+        ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Text("Configurar transmissão", style = MaterialTheme.typography.headlineSmall)
                 AddressDropdown(
                     options = options,
                     selected = bindAddress,

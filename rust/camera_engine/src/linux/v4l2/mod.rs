@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) use stream::{CaptureStream, CapturedFrame};
+pub(crate) use stream::{CaptureStream, CapturedFrame, KeyframeRequester};
 
 use crate::{linux::gpu::Workload, media::FrameRate};
 

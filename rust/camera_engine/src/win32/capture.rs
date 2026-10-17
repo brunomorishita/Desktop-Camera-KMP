@@ -28,7 +28,7 @@ use windows::{
 };
 
 use crate::{
-    media::{CaptureSource, FrameHub, FrameRate},
+    media::{CameraH264, CaptureSource, FrameHub, FrameRate},
     win32::{
         device::GpuDevice,
         frame::{FramePool, SharedFrame, VideoFrame},
@@ -138,6 +138,11 @@ impl CaptureSource<Win32Backend> for InnerNativeCapture {
 
     fn frame_rate(&self) -> FrameRate {
         self.frame_rate
+    }
+
+    // MediaCapture hands out decoded NV12 only
+    fn camera_h264(&self) -> Option<CameraH264> {
+        None
     }
 
     async fn start(

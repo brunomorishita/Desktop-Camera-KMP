@@ -22,6 +22,9 @@ pub const CAP_TIMEPERFRAME: u32 = 0x1000;
 pub const FRMSIZE_TYPE_DISCRETE: u32 = 1;
 pub const FRMIVAL_TYPE_DISCRETE: u32 = 1;
 
+// V4L2_CID_CODEC_BASE + 229, a button control: any value triggers it
+pub const CID_MPEG_VIDEO_FORCE_KEY_FRAME: u32 = 0x0099_09e5;
+
 pub const BUF_FLAG_KEYFRAME: u32 = 0x0000_0008;
 pub const BUF_FLAG_ERROR: u32 = 0x0000_0040;
 
@@ -219,6 +222,12 @@ pub struct Buffer {
 }
 
 #[repr(C)]
+pub struct Control {
+    pub id: u32,
+    pub value: i32,
+}
+
+#[repr(C)]
 pub struct ExportBuffer {
     pub buf_type: u32,
     pub index: u32,
@@ -240,6 +249,7 @@ const _: () = {
     assert!(size_of::<RequestBuffers>() == 20);
     assert!(size_of::<Buffer>() == 88);
     assert!(size_of::<ExportBuffer>() == 64);
+    assert!(size_of::<Control>() == 8);
 };
 
 const IOC_WRITE: u32 = 1;
@@ -259,6 +269,7 @@ pub const VIDIOC_EXPBUF: c_ulong = ioc(IOC_READ | IOC_WRITE, 16, size_of::<Expor
 pub const VIDIOC_DQBUF: c_ulong = ioc(IOC_READ | IOC_WRITE, 17, size_of::<Buffer>());
 pub const VIDIOC_STREAMON: c_ulong = ioc(IOC_WRITE, 18, size_of::<i32>());
 pub const VIDIOC_STREAMOFF: c_ulong = ioc(IOC_WRITE, 19, size_of::<i32>());
+pub const VIDIOC_S_CTRL: c_ulong = ioc(IOC_READ | IOC_WRITE, 28, size_of::<Control>());
 pub const VIDIOC_G_PARM: c_ulong = ioc(IOC_READ | IOC_WRITE, 21, size_of::<StreamParm>());
 pub const VIDIOC_S_PARM: c_ulong = ioc(IOC_READ | IOC_WRITE, 22, size_of::<StreamParm>());
 pub const VIDIOC_ENUM_FRAMESIZES: c_ulong = ioc(IOC_READ | IOC_WRITE, 74, size_of::<FrmSizeEnum>());
@@ -303,6 +314,7 @@ mod tests {
         assert_eq!(VIDIOC_DQBUF, 0xc058_5611);
         assert_eq!(VIDIOC_STREAMON, 0x4004_5612);
         assert_eq!(VIDIOC_ENUM_FRAMESIZES, 0xc02c_564a);
+        assert_eq!(VIDIOC_S_CTRL, 0xc008_561c);
         assert_eq!(fourcc(b"MJPG"), 0x4750_4a4d);
     }
 }

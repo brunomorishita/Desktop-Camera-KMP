@@ -47,6 +47,16 @@ pub struct EncodedFrame {
 }
 
 pub type EncodedSink = Box<dyn FnMut(EncodedFrame) + Send>;
+pub type SharedEncodedFrame = Arc<EncodedFrame>;
+pub type KeyframeRequest = Arc<dyn Fn() + Send + Sync>;
+
+// H.264 produced by the camera itself, streamed as is instead of being encoded again
+#[derive(Clone)]
+pub(crate) struct CameraH264 {
+    pub frames: Arc<FrameHub<SharedEncodedFrame>>,
+    // Asks the camera for an IDR, best effort: many cameras only follow their own GOP
+    pub request_keyframe: KeyframeRequest,
+}
 
 // Latest output size requested by the UI, consumed by the render thread
 pub type PendingSize = Arc<Mutex<Option<(u32, u32)>>>;
@@ -72,6 +82,8 @@ pub(crate) trait CaptureSource<B: Backend>: Sized + Send + Sync + 'static {
     fn frame_rate(&self) -> FrameRate;
     async fn start(&self, gpu: B::Gpu, hub: Arc<FrameHub<B::Frame>>) -> Result<(), CameraError>;
     async fn stop(&self) -> Result<(), CameraError>;
+    // Some while capturing from a camera that sends H.264: streaming then skips the encoder
+    fn camera_h264(&self) -> Option<CameraH264>;
 }
 
 // Draws frames into a native window owned by the UI (HWND on Windows, X11 Window on Linux)

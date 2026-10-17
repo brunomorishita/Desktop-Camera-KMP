@@ -30,6 +30,8 @@ pub(crate) struct CapturedFrame<'a> {
 // Capture thread handle. Dropping it stops the camera and joins the thread
 pub(crate) struct CaptureStream {
     mode: CaptureMode,
+    // Second descriptor of the camera, for controls sent while the thread streams
+    control: Arc<File>,
     stop: Arc<OwnedFd>,
     thread: Option<JoinHandle<()>>,
 }
@@ -43,6 +45,12 @@ impl CaptureStream {
     ) -> Result<Self, CameraError> {
         let mut device = Device::open(mode)?;
         let mode = device.mode.clone();
+        let control = Arc::new(
+            device
+                .file
+                .try_clone()
+                .map_err(|e| v4l2_error("duplicate the camera descriptor", e))?,
+        );
         device.start_streaming()?;
 
         let stop = Arc::new(event_fd()?);
@@ -58,6 +66,7 @@ impl CaptureStream {
 
         Ok(CaptureStream {
             mode,
+            control,
             stop,
             thread: Some(thread),
         })
@@ -66,6 +75,25 @@ impl CaptureStream {
     // The mode the driver accepted, which may differ slightly from the one requested
     pub fn mode(&self) -> &CaptureMode {
         &self.mode
+    }
+
+    pub fn keyframe_requester(&self) -> KeyframeRequester {
+        KeyframeRequester(self.control.clone())
+    }
+}
+
+// Asks an H.264 camera for an IDR. Best effort: cameras without the codec control (most
+// UVC ones) ignore it and the client waits for the next IDR of the camera's own GOP
+#[derive(Clone)]
+pub(crate) struct KeyframeRequester(Arc<File>);
+
+impl KeyframeRequester {
+    pub fn request(&self) {
+        let mut control = sys::Control {
+            id: sys::CID_MPEG_VIDEO_FORCE_KEY_FRAME,
+            value: 1,
+        };
+        let _ = unsafe { sys::ioctl(self.0.as_raw_fd(), sys::VIDIOC_S_CTRL, &mut control) };
     }
 }
 

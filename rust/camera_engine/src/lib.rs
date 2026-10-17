@@ -1,3 +1,6 @@
+// Only the Linux backend uses it so far, and not every part yet
+#[allow(dead_code)]
+mod codec;
 mod ffi;
 mod media;
 mod rtsp;

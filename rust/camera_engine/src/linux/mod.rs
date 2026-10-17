@@ -7,6 +7,8 @@
 pub(crate) mod gpu;
 #[allow(dead_code, unused_imports)]
 pub(crate) mod v4l2;
+#[allow(dead_code, unused_imports)]
+pub(crate) mod vaapi;
 
 use std::sync::{atomic::AtomicBool, Arc};
 

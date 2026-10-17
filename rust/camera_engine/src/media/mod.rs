@@ -72,6 +72,9 @@ pub(crate) trait Backend: Sized + 'static {
     type Renderer: PreviewRenderer<Self>;
     type Encoder: VideoEncoder<Self>;
 
+    // False while the platform has no renderer: the UI shows a notice instead of the preview
+    const SUPPORTS_PREVIEW: bool;
+
     fn create_gpu() -> Result<Self::Gpu, CameraError>;
 }
 

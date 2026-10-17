@@ -58,6 +58,11 @@ impl CameraController {
         })
     }
 
+    /// Whether attach_preview can render on this platform; when false it always fails
+    pub fn preview_supported(&self) -> bool {
+        NativeBackend::SUPPORTS_PREVIEW
+    }
+
     /// Starts rendering camera frames into the window (HWND on Windows, X11 Window on Linux).
     /// Synchronous on purpose: it must run while the window is alive, ordered with
     /// detach_preview. Call start_capture() after it

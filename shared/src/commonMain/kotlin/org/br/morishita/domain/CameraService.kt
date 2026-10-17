@@ -1,6 +1,9 @@
 package org.br.morishita.domain
 
 interface CameraService {
+    // False on platforms without a native renderer yet: attachPreview would always fail
+    val previewSupported: Boolean
+
     // Preview: synchronous, must be called while the native window exists
     fun attachPreview(hwndPointer: ULong, width: UInt, height: UInt)
     fun detachPreview(hwndPointer: ULong)

@@ -26,9 +26,9 @@ val nativeLibFilename = when {
 }
 
 val rustDir = file("${rootDir}/rust") // Caminho para a pasta do projeto Rust
-val rustOutputDir = file("${rustDir}/target/release")
 val rustOutputLib = file("${rustDir}/target/release/$nativeLibFilename")
 val generatedKotlinDir = layout.buildDirectory.dir("generated/uniffi/kotlin")
+val nativeResourcesDir = layout.buildDirectory.dir("generated/native-resources")
 
 // Task for compiling Rust code using Cargo
 val buildRustRelease by tasks.registering(Exec::class) {
@@ -69,9 +69,19 @@ val generateUniFFIBindings by tasks.registering(Exec::class) {
     outputs.dir(generatedKotlinDir)
 }
 
+// Only the library goes into the jar, where JNA looks for it: <platform>/<file>,
+// e.g. linux-x86-64/libcamera_engine.so or win32-x86-64/camera_engine.dll
+val copyNativeLib by tasks.registering(Sync::class) {
+    group = "rust"
+    description = "Place the native library where JNA finds it on the classpath"
+    dependsOn(buildRustRelease)
+    from(rustOutputLib)
+    into(nativeResourcesDir.map { it.dir(jnaPlatformFolder) })
+}
+
 // Ensuring that native resources will be processed before the execution
 tasks.withType<ProcessResources>().configureEach {
-    dependsOn(generateUniFFIBindings)
+    dependsOn(generateUniFFIBindings, copyNativeLib)
 }
 
 kotlin {
@@ -80,7 +90,7 @@ kotlin {
     sourceSets {
         val jvmMain by getting {
             kotlin.srcDir(generatedKotlinDir)
-            resources.srcDir(rustOutputDir)
+            resources.srcDir(nativeResourcesDir)
         }
 
         jvmMain.dependencies {
@@ -106,6 +116,9 @@ kotlin {
             implementation(libs.koin.compose.viewmodel.navigation)
         }
         commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
+        jvmTest.dependencies {
             implementation(libs.kotlin.test)
         }
     }

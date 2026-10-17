@@ -5,12 +5,15 @@ import org.br.morishita.domain.StreamSettings
 import org.br.morishita.domain.StreamTransport
 import uniffi.camera_engine.StreamConfig
 
-class WindowsCameraService : CameraService {
+// Same Rust API on every platform: Windows (Media Foundation) and Linux (V4L2)
+class NativeCameraService : CameraService {
     init {
         NativeLibLoader.ensureLoaded()
     }
 
     private val controller = uniffi.camera_engine.CameraController()
+
+    override val previewSupported: Boolean = controller.previewSupported()
 
     override fun attachPreview(hwndPointer: ULong, width: UInt, height: UInt) {
         try {

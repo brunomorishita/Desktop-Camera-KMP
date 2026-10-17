@@ -16,6 +16,8 @@ impl Backend for Win32Backend {
     type Renderer = renderer::InnerNativeRenderer;
     type Encoder = encoder::H264Encoder;
 
+    const SUPPORTS_PREVIEW: bool = true;
+
     fn create_gpu() -> Result<device::GpuDevice, CameraError> {
         device::GpuDevice::new()
     }

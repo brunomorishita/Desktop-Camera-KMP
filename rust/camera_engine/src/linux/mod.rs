@@ -55,6 +55,8 @@ impl Backend for LinuxBackend {
     type Renderer = LinuxRenderer;
     type Encoder = LinuxEncoder;
 
+    const SUPPORTS_PREVIEW: bool = false;
+
     // Never fails: H.264 passthrough streams without any GPU
     fn create_gpu() -> Result<LinuxGpu, CameraError> {
         Ok(LinuxGpu {

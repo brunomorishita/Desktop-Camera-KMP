@@ -40,9 +40,28 @@ pub(crate) struct DecodedFrame {
     // Visible area inside the coded surface: (x, y, width, height)
     pub visible: (u32, u32, u32, u32),
     pub full_range: bool,
+    // YUV to RGB matrix: BT.709 (HD) or BT.601 (SD)
+    pub bt709: bool,
 }
 
 impl DecodedFrame {
+    // Same value for the same GPU memory: lets consumers cache what they build per surface
+    // (e.g. an imported texture). Surfaces are recycled, the pool changes on a new size
+    pub fn surface_key(&self) -> (usize, VASurfaceID) {
+        (Arc::as_ptr(&self.surface.pool) as usize, self.surface.id)
+    }
+
+    // Waits until the GPU finished decoding into the surface
+    pub fn sync(&self) -> Result<(), String> {
+        let display = &self.surface.pool.display;
+        unsafe {
+            display.api.check(
+                "vaSyncSurface",
+                (display.api.sync_surface)(display.raw, self.surface.id),
+            )
+        }
+    }
+
     pub fn coded_size(&self) -> (u32, u32) {
         (self.surface.pool.width, self.surface.pool.height)
     }
@@ -276,6 +295,13 @@ impl H264Decoder {
         self.dpb.flush()
     }
 
+    // Forgets the references: decoding resumes at the next IDR. For a caller that stopped
+    // feeding access units for a while
+    pub fn reset(&mut self) {
+        self.dpb = Dpb::default();
+        self.waiting_for_idr = true;
+    }
+
     fn decode_access_unit(
         &mut self,
         access_unit: &[u8],
@@ -363,6 +389,12 @@ impl H264Decoder {
             timestamp_hns,
             visible: sps.visible_rect(),
             full_range: sps.full_range,
+            bt709: match sps.matrix_coefficients {
+                1 => true,
+                5 | 6 => false,
+                // Unspecified: the usual convention, HD content is BT.709
+                _ => sps.visible_rect().3 >= 720,
+            },
         };
         output.extend(self.dpb.finish_picture(current, frame, &sps));
         Ok(output)

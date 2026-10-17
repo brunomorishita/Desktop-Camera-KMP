@@ -88,7 +88,9 @@ impl Api {
         let text = if text.is_null() {
             String::new()
         } else {
-            unsafe { CStr::from_ptr(text) }.to_string_lossy().into_owned()
+            unsafe { CStr::from_ptr(text) }
+                .to_string_lossy()
+                .into_owned()
         };
         format!("{call} failed: {text} ({status})")
     }
@@ -155,16 +157,20 @@ impl Display {
 
     pub fn profiles(&self) -> Vec<VAProfile> {
         let api = self.api;
-        list(unsafe { (api.max_num_profiles)(self.raw) }, |items, count| unsafe {
-            (api.query_config_profiles)(self.raw, items, count)
-        })
+        list(
+            unsafe { (api.max_num_profiles)(self.raw) },
+            |items, count| unsafe { (api.query_config_profiles)(self.raw, items, count) },
+        )
     }
 
     pub fn entrypoints(&self, profile: VAProfile) -> Vec<VAEntrypoint> {
         let api = self.api;
-        list(unsafe { (api.max_num_entrypoints)(self.raw) }, |items, count| unsafe {
-            (api.query_config_entrypoints)(self.raw, profile, items, count)
-        })
+        list(
+            unsafe { (api.max_num_entrypoints)(self.raw) },
+            |items, count| unsafe {
+                (api.query_config_entrypoints)(self.raw, profile, items, count)
+            },
+        )
     }
 
     // None when the attribute is not supported for this profile and entrypoint

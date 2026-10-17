@@ -19,7 +19,8 @@ Foundation by building something real. Contributions, questions and suggestions 
 | Take snapshots | 🔜 Planned |
 | Record videos | 🔜 Planned |
 | Linux: RTSP streaming of H.264 cameras (V4L2, no re-encoding) | 🚧 In progress |
-| Linux: preview, MJPEG/raw cameras (VA-API/NVENC) | 🔜 Planned |
+| Linux: preview of H.264 cameras (VA-API decode, EGL on X11/XWayland, zero copy) | 🚧 In progress |
+| Linux: MJPEG/raw cameras (VA-API/NVENC) | 🔜 Planned |
 | Support for macOS | 💭 Idea |
 
 The app has two screens, selected from the bottom bar:
@@ -59,8 +60,9 @@ The app has two screens, selected from the bottom bar:
 - **Windows 10 or 11** with a GPU with **Direct3D 11.1** support and a hardware H.264
   encoder (practically any Intel, AMD or NVIDIA GPU from the last years)
 - or **Linux** (work in progress): a camera that sends H.264 itself (`v4l2-ctl --list-formats`
-  shows `H264`), streamed without re-encoding. There is no preview yet, and MJPEG/raw cameras
-  are not supported yet
+  shows `H264`), streamed without re-encoding. The preview needs an X11 session (or XWayland)
+  and a GPU that decodes H.264 with VA-API (Intel or AMD); MJPEG/raw cameras are not
+  supported yet
 - A webcam
 - **Rust** toolchain (`rustc` + `cargo`) — install with [rustup](https://rustup.rs/)
 - **JDK 21** — Gradle downloads it automatically if needed (via the foojay toolchain resolver)
@@ -154,7 +156,8 @@ Desktop-Camera-KMP/
         │   ├── renderer.rs      # Draws frames into the preview window
         │   └── encoder.rs       # Hardware H.264 encoder (Media Foundation)
         ├── linux/               # Linux backend: H.264 cameras stream as is (passthrough);
-        │                        #   preview and encoder not implemented yet
+        │                        #   encoder not implemented yet
+        │   ├── egl/             # Preview: imports decoded DMA-BUFs, draws on the X11 window
         │   ├── gpu/             # GPU detection (sysfs, VA-API, CUDA/NVENC/NVDEC) and choice
         │   ├── v4l2/            # Camera capture (V4L2 ioctls, mmap buffers, DMA-BUF export)
         │   └── vaapi/           # H.264 decode on the GPU (VA-API, loaded with dlopen);

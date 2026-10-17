@@ -30,6 +30,12 @@ impl<F: Clone> FrameHub<F> {
         self.subscribers.lock().retain(|(sub_id, _)| *sub_id != id);
     }
 
+    // Lets producers skip work (e.g. decoding) whose result nobody would receive
+    #[cfg_attr(windows, allow(dead_code))]
+    pub fn has_subscribers(&self) -> bool {
+        !self.subscribers.lock().is_empty()
+    }
+
     pub fn publish(&self, frame: F) {
         // Never blocks the capture thread: a consumer that is behind just misses this frame
         for (_, sender) in self.subscribers.lock().iter() {

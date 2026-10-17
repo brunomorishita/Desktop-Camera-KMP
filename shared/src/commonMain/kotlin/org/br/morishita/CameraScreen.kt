@@ -55,8 +55,9 @@ private fun PreviewUnavailable(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "A pré-visualização da câmera ainda não está disponível nesta plataforma.\n" +
-                "A transmissão RTSP continua disponível.",
+            text = "A pré-visualização da câmera não está disponível neste sistema.\n" +
+                "No Linux ela precisa de uma sessão X11 (ou XWayland) e de uma GPU que\n" +
+                "decodifique H.264 por VA-API. A transmissão RTSP continua disponível.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

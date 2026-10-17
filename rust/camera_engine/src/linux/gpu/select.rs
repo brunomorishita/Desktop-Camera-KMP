@@ -224,10 +224,13 @@ impl Ranking {
 fn best<T>(candidates: Vec<(u32, usize, T)>) -> Option<(usize, T)> {
     candidates
         .into_iter()
-        .fold(None, |best: Option<(u32, usize, T)>, candidate| match best {
-            Some(current) if current.0 >= candidate.0 => Some(current),
-            _ => Some(candidate),
-        })
+        .fold(
+            None,
+            |best: Option<(u32, usize, T)>, candidate| match best {
+                Some(current) if current.0 >= candidate.0 => Some(current),
+                _ => Some(candidate),
+            },
+        )
         .map(|(_, index, api)| (index, api))
 }
 
@@ -290,7 +293,10 @@ mod tests {
 
         let mjpeg = plan(&gpus, Workload::MjpegTranscode, &GpuPreference::Auto).unwrap();
         assert_eq!(mjpeg.decode, Some((0, DecodeApi::Vaapi)));
-        assert_eq!(mjpeg.encode, Some((0, EncodeApi::Vaapi { low_power: true })));
+        assert_eq!(
+            mjpeg.encode,
+            Some((0, EncodeApi::Vaapi { low_power: true }))
+        );
         assert!(mjpeg.is_zero_copy());
     }
 
@@ -308,7 +314,10 @@ mod tests {
 
         let mjpeg = plan(&gpus, Workload::MjpegTranscode, &preference).unwrap();
         assert_eq!(mjpeg.decode, Some((1, DecodeApi::Nvdec)));
-        assert_eq!(mjpeg.encode, Some((0, EncodeApi::Vaapi { low_power: true })));
+        assert_eq!(
+            mjpeg.encode,
+            Some((0, EncodeApi::Vaapi { low_power: true }))
+        );
         assert!(!mjpeg.is_zero_copy());
     }
 
@@ -361,7 +370,10 @@ mod tests {
 
     #[test]
     fn parses_preference() {
-        assert_eq!(GpuPreference::parse("NVIDIA"), GpuPreference::Vendor(Vendor::Nvidia));
+        assert_eq!(
+            GpuPreference::parse("NVIDIA"),
+            GpuPreference::Vendor(Vendor::Nvidia)
+        );
         assert_eq!(GpuPreference::parse(" auto "), GpuPreference::Auto);
         assert_eq!(
             GpuPreference::parse("/dev/dri/renderD129"),

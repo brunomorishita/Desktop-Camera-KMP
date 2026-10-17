@@ -130,10 +130,9 @@ unsafe fn query_caps(api: &Api, display: VaDisplay) -> VaapiCaps {
         ..Default::default()
     };
 
-    let profiles = list(
-        (api.max_num_profiles)(display),
-        |items, count| (api.query_config_profiles)(display, items, count),
-    );
+    let profiles = list((api.max_num_profiles)(display), |items, count| {
+        (api.query_config_profiles)(display, items, count)
+    });
     let entrypoints = |profile: VaProfile| {
         list((api.max_num_entrypoints)(display), |items, count| {
             (api.query_config_entrypoints)(display, profile, items, count)

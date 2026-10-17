@@ -16,6 +16,8 @@ crossbeam-channel = "0.5.17"
 [target.'cfg(target_os = "linux")'.dependencies]
 # dlopen of the driver libraries (libva, CUDA, NVENC, NVDEC), resolved at run time
 libloading = "0.8"
+# Kernel interfaces of the capture: ioctl, mmap, poll, eventfd
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [

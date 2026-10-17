@@ -4,6 +4,8 @@
 // Used by the backend once capture and encoding land
 #[allow(dead_code, unused_imports)]
 pub(crate) mod gpu;
+#[allow(dead_code, unused_imports)]
+pub(crate) mod v4l2;
 
 use std::sync::{atomic::AtomicBool, Arc};
 
@@ -56,7 +58,11 @@ impl CaptureSource<LinuxBackend> for LinuxCapture {
         match *self {}
     }
 
-    async fn start(&self, _gpu: LinuxGpu, _hub: Arc<FrameHub<LinuxFrame>>) -> Result<(), CameraError> {
+    async fn start(
+        &self,
+        _gpu: LinuxGpu,
+        _hub: Arc<FrameHub<LinuxFrame>>,
+    ) -> Result<(), CameraError> {
         match *self {}
     }
 
@@ -66,7 +72,12 @@ impl CaptureSource<LinuxBackend> for LinuxCapture {
 }
 
 impl PreviewRenderer<LinuxBackend> for LinuxRenderer {
-    fn new(gpu: LinuxGpu, _window_handle: u64, _width: u32, _height: u32) -> Result<Self, CameraError> {
+    fn new(
+        gpu: LinuxGpu,
+        _window_handle: u64,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Self, CameraError> {
         match gpu {}
     }
 

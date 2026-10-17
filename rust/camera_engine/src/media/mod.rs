@@ -25,7 +25,7 @@ pub(crate) type NativeCapture = <NativeBackend as Backend>::Capture;
 pub(crate) type NativeRenderer = <NativeBackend as Backend>::Renderer;
 pub(crate) type NativeEncoder = <NativeBackend as Backend>::Encoder;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameRate {
     pub numerator: u32,
     pub denominator: u32,

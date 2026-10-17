@@ -169,9 +169,9 @@ unsafe fn nvenc_supports_h264(context: CuContext) -> bool {
     let Ok(lib) = Library::new("libnvidia-encode.so.1") else {
         return false;
     };
-    let Ok(max_version) = lib.get::<unsafe extern "C" fn(*mut u32) -> c_int>(
-        b"NvEncodeAPIGetMaxSupportedVersion\0",
-    ) else {
+    let Ok(max_version) =
+        lib.get::<unsafe extern "C" fn(*mut u32) -> c_int>(b"NvEncodeAPIGetMaxSupportedVersion\0")
+    else {
         return false;
     };
     let Ok(create_instance) =

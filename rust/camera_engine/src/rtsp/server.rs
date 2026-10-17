@@ -21,7 +21,7 @@ use super::{
     h264::{AccessUnit, AccessUnitBuilder, ParameterSets},
     rtp::{random_u32, RtpPacketizer, PAYLOAD_TYPE},
 };
-use crate::{win32::encoder::EncodedFrame, CameraError, StreamTransport};
+use crate::{media::EncodedFrame, CameraError, StreamTransport};
 
 // Access units buffered per client before it is considered behind
 const BROADCAST_CAPACITY: usize = 64;

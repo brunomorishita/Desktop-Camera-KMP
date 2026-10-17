@@ -7,8 +7,8 @@ use std::{
 };
 
 use crate::{
+    media::{EncoderConfig, NativeEncoder, VideoEncoder},
     rtsp::server::{RtspServer, StreamPublisher},
-    win32::encoder::{EncoderConfig, H264Encoder},
     CameraController, CameraError, StreamConfig,
 };
 
@@ -16,7 +16,7 @@ use crate::{
 pub(crate) struct Streaming {
     // Declared first so it is dropped first: clients stop before the encoder
     server: RtspServer,
-    _encoder: H264Encoder,
+    _encoder: NativeEncoder,
     subscription: u64,
 }
 
@@ -59,7 +59,7 @@ impl CameraController {
         // Capacity 2: absorbs jitter between capture and encoder without adding latency
         let (subscription, frames) = self.hub.subscribe(2);
         let mut publisher = publisher;
-        let encoder = H264Encoder::spawn(
+        let encoder = NativeEncoder::spawn(
             self.gpu()?,
             EncoderConfig {
                 width: dimensions.width,

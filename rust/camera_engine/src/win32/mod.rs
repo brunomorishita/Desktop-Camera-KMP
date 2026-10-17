@@ -4,6 +4,19 @@ pub(crate) mod encoder;
 pub(crate) mod frame;
 pub(crate) mod renderer;
 
-// Re-exporta as structs principais para simplificar as chamadas internas
-pub(crate) use capture::InnerNativeCapture;
-pub(crate) use renderer::InnerNativeRenderer;
+use crate::{media::Backend, CameraError};
+
+// WinRT MediaCapture -> D3D11 NV12 frames -> D3D11 video processor / Media Foundation encoder
+pub(crate) struct Win32Backend;
+
+impl Backend for Win32Backend {
+    type Gpu = device::GpuDevice;
+    type Frame = frame::SharedFrame;
+    type Capture = capture::InnerNativeCapture;
+    type Renderer = renderer::InnerNativeRenderer;
+    type Encoder = encoder::H264Encoder;
+
+    fn create_gpu() -> Result<device::GpuDevice, CameraError> {
+        device::GpuDevice::new()
+    }
+}

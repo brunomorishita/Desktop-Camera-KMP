@@ -130,12 +130,16 @@ Desktop-Camera-KMP/
         ├── ffi/                 # API exported to Kotlin (UniFFI)
         │   ├── camera.rs        # CameraController: preview + capture lifecycle
         │   └── rtsp_transmitter.rs  # start/stop streaming
-        ├── win32/               # Windows APIs
+        ├── media/               # Platform independent contracts
+        │   ├── mod.rs           # Backend traits (capture, preview, encoder) and shared types
+        │   └── hub.rs           # FrameHub: fan-out of frames to consumers
+        ├── win32/               # Windows backend
         │   ├── capture.rs       # Camera capture (WinRT MediaCapture)
         │   ├── device.rs        # Shared D3D11 device
-        │   ├── frame.rs         # FrameHub: fan-out of frames to consumers
+        │   ├── frame.rs         # Pool of NV12 GPU textures
         │   ├── renderer.rs      # Draws frames into the preview window
         │   └── encoder.rs       # Hardware H.264 encoder (Media Foundation)
+        ├── linux/               # Linux backend (placeholder, not implemented yet)
         ├── rtsp/                # RTSP server, RTP packetizer, H.264 parsing
         └── bin/uniffi-bindgen.rs  # Binding generator used by Gradle
 ```

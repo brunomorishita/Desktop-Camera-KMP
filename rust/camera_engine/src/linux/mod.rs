@@ -1,6 +1,10 @@
 // Placeholder backend so the crate builds on Linux: every entry point reports that the
 // platform is not supported yet. The types are uninhabited, no value of them ever exists.
 // To be replaced by V4L2 capture, VA-API/NVENC encoding and a Vulkan/EGL preview
+// Used by the backend once capture and encoding land
+#[allow(dead_code, unused_imports)]
+pub(crate) mod gpu;
+
 use std::sync::{atomic::AtomicBool, Arc};
 
 use crossbeam_channel::Receiver;

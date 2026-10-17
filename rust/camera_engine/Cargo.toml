@@ -13,6 +13,10 @@ thiserror = "1.0"
 parking_lot = "0.12.5"
 crossbeam-channel = "0.5.17"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# dlopen of the driver libraries (libva, CUDA, NVENC, NVDEC), resolved at run time
+libloading = "0.8"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [
 "Foundation",

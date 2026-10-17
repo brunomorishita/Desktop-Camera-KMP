@@ -139,7 +139,8 @@ Desktop-Camera-KMP/
         │   ├── frame.rs         # Pool of NV12 GPU textures
         │   ├── renderer.rs      # Draws frames into the preview window
         │   └── encoder.rs       # Hardware H.264 encoder (Media Foundation)
-        ├── linux/               # Linux backend (placeholder, not implemented yet)
+        ├── linux/               # Linux backend (capture/preview/encoder not implemented yet)
+        │   └── gpu/             # GPU detection (sysfs, VA-API, CUDA/NVENC/NVDEC) and choice
         ├── rtsp/                # RTSP server, RTP packetizer, H.264 parsing
         └── bin/uniffi-bindgen.rs  # Binding generator used by Gradle
 ```

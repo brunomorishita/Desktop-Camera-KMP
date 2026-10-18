@@ -6,13 +6,10 @@ use crate::linux::vaapi::{
     sys::{
         VAConfigAttribRateControl, VAEntrypoint, VAEntrypointEncSlice, VAEntrypointEncSliceLP,
         VAEntrypointVLD, VAProfile, VAProfileH264ConstrainedBaseline, VAProfileH264High,
-        VAProfileH264Main, VAProfileJPEGBaseline,
+        VAProfileH264Main, VAProfileJPEGBaseline, VA_RC_CBR,
     },
     Display,
 };
-
-// VA_RC_CBR in va.h
-const VA_RC_CBR: u32 = 0x2;
 
 pub(super) fn probe(render_node: &Path) -> Result<VaapiCaps, String> {
     let display = Display::open(render_node)?;

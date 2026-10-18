@@ -21,8 +21,8 @@ printf '#include <va/va.h>\n#include <va/va_drm.h>\n#include <va/va_drmcommon.h>
     bindgen "$wrapper" \
         --no-doc-comments --no-prepend-enum-name --default-enum-style consts \
         --with-derive-default \
-        --allowlist-type 'VA(PictureParameterBufferH264|SliceParameterBufferH264|IQMatrixBufferH264|PictureH264|PictureParameterBufferJPEGBaseline|SliceParameterBufferJPEGBaseline|IQMatrixBufferJPEGBaseline|HuffmanTableBufferJPEGBaseline|SurfaceAttrib|SurfaceAttribType|GenericValue|GenericValueType|ImageFormat|Image|DRMPRIMESurfaceDescriptor|ConfigAttrib|ConfigAttribType|Profile|Entrypoint|BufferType|Status|Display|SurfaceID|ContextID|ConfigID|BufferID|ImageID|GenericID)' \
-        --allowlist-var 'VA_(RT_FORMAT_YUV4(00|11|20|22|44)|FOURCC_(NV12|YUY2|UYVY|422H|422V|444P|411P|Y800|IMC3)|PICTURE_H264_.*|PROGRESSIVE|SURFACE_ATTRIB_.*|EXPORT_SURFACE_.*|STATUS_SUCCESS|INVALID_ID|INVALID_SURFACE|SLICE_DATA_FLAG_ALL)' \
+        --allowlist-type 'VA(PictureParameterBufferH264|SliceParameterBufferH264|IQMatrixBufferH264|PictureH264|PictureParameterBufferJPEGBaseline|SliceParameterBufferJPEGBaseline|IQMatrixBufferJPEGBaseline|HuffmanTableBufferJPEGBaseline|EncSequenceParameterBufferH264|EncPictureParameterBufferH264|EncSliceParameterBufferH264|EncMiscParameterBuffer|EncMiscParameterType|EncMiscParameterRateControl|EncMiscParameterHRD|EncMiscParameterFrameRate|EncPackedHeaderParameterBuffer|EncPackedHeaderType|CodedBufferSegment|SurfaceAttrib|SurfaceAttribType|GenericValue|GenericValueType|ImageFormat|Image|DRMPRIMESurfaceDescriptor|ConfigAttrib|ConfigAttribType|Profile|Entrypoint|BufferType|Status|Display|SurfaceID|ContextID|ConfigID|BufferID|ImageID|GenericID)' \
+        --allowlist-var 'VA_(RT_FORMAT_YUV4(00|11|20|22|44)|FOURCC_(NV12|YUY2|UYVY|422H|422V|444P|411P|Y800|IMC3)|PICTURE_H264_.*|PROGRESSIVE|SURFACE_ATTRIB_.*|EXPORT_SURFACE_.*|STATUS_SUCCESS|INVALID_ID|INVALID_SURFACE|SLICE_DATA_FLAG_ALL|ENC_PACKED_HEADER_.*|RC_.*|CODED_BUF_STATUS_.*)' \
         -- -I/usr/include -I"$(gcc -print-file-name=include)"
 } > "$out"
 

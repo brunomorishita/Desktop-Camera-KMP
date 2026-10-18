@@ -1,51 +1,5 @@
 // Test helpers: builds bitstreams syntax element by syntax element
-#[derive(Default)]
-pub struct BitWriter {
-    bits: Vec<bool>,
-}
-
-impl BitWriter {
-    pub fn len(&self) -> usize {
-        self.bits.len()
-    }
-
-    pub fn bits(&mut self, value: u32, count: u32) -> &mut Self {
-        for i in (0..count).rev() {
-            self.bits.push((value >> i) & 1 == 1);
-        }
-        self
-    }
-
-    pub fn ue(&mut self, value: u32) -> &mut Self {
-        let code = value as u64 + 1;
-        let length = 64 - code.leading_zeros();
-        self.bits(0, length - 1);
-        for i in (0..length).rev() {
-            self.bits.push((code >> i) & 1 == 1);
-        }
-        self
-    }
-
-    pub fn se(&mut self, value: i32) -> &mut Self {
-        self.ue(if value > 0 {
-            (2 * value - 1) as u32
-        } else {
-            (-2 * value) as u32
-        })
-    }
-
-    // rbsp_trailing_bits included
-    pub fn finish(&mut self) -> Vec<u8> {
-        self.bits.push(true);
-        while !self.bits.len().is_multiple_of(8) {
-            self.bits.push(false);
-        }
-        self.bits
-            .chunks(8)
-            .map(|chunk| chunk.iter().fold(0u8, |byte, &bit| (byte << 1) | bit as u8))
-            .collect()
-    }
-}
+pub use super::bits::BitWriter;
 
 use super::{
     params::Sps,

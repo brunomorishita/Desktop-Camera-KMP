@@ -350,4 +350,62 @@ mod tests {
         drop(server);
         assert!(keyframe_requests.load(Ordering::Relaxed) >= 2);
     }
+
+    // Whatever the camera sends: H.264 goes out as is, MJPEG through the GPU encoder. A
+    // preview takes the same frames meanwhile
+    #[test]
+    #[ignore = "opens the real camera, needs ffprobe, run with: cargo test -- --ignored --nocapture"]
+    fn streams_the_camera() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let controller = CameraController::new();
+        let url = runtime
+            .block_on(controller.start_streaming(StreamConfig {
+                bind_address: "127.0.0.1".to_string(),
+                port: 18555,
+                path: "camera".to_string(),
+                transport: StreamTransport::Any,
+                bitrate: 4_000_000,
+            }))
+            .unwrap();
+        let camera_h264 = runtime
+            .block_on(controller.capture.lock())
+            .as_ref()
+            .and_then(|capture| capture.camera_h264())
+            .is_some();
+        println!(
+            "{url}: {}",
+            if camera_h264 {
+                "camera H.264, passthrough"
+            } else {
+                "encoded on the GPU"
+            }
+        );
+
+        // Holds each frame as long as drawing it at 60 Hz would
+        let (preview, frames) = controller.hub.subscribe(1);
+        let drawn = std::thread::spawn(move || {
+            let mut count = 0;
+            while let Ok(frame) = frames.recv_timeout(Duration::from_secs(3)) {
+                std::thread::sleep(Duration::from_millis(16));
+                drop(frame);
+                count += 1;
+            }
+            count
+        });
+
+        for transport in ["tcp", "udp"] {
+            let (width, height, decoded) = probe(&url, transport);
+            println!("{transport}: {width}x{height}, {decoded} frames decoded in 2 s");
+            assert!(width > 0 && height > 0);
+            assert!(
+                decoded >= 20,
+                "only {decoded} frames decoded over {transport}"
+            );
+        }
+        controller.hub.unsubscribe(preview);
+        let drawn = drawn.join().unwrap();
+        println!("preview: {drawn} frames");
+        assert!(drawn >= 60, "the preview starved while streaming");
+        runtime.block_on(controller.stop()).unwrap();
+    }
 }

@@ -9,8 +9,10 @@ use super::{
 };
 use crate::codec::jpeg::{self, Frame, HuffmanTable, Subsampling};
 
-// The picture being decoded plus what consumers (preview, encoder) may hold
-const SURFACE_COUNT: u32 = 6;
+// The picture being decoded plus what consumers hold: the encoder's queue (2) and the
+// picture it encodes, each preview's queue (1) and the picture on screen, with room for
+// two previews and some slack. A 720p NV12 surface is 1.4 MB
+const SURFACE_COUNT: u32 = 10;
 
 // Config, context and surfaces for one picture size and chroma layout
 struct Session {
@@ -37,7 +39,7 @@ pub(crate) struct JpegDecoder {
 
 impl JpegDecoder {
     pub fn new(render_node: &Path) -> Result<Self, String> {
-        let display = Display::open(render_node)?;
+        let display = Display::shared(render_node)?;
         if !display.profiles().contains(&VAProfileJPEGBaseline) {
             return Err("the GPU cannot decode JPEG".to_string());
         }

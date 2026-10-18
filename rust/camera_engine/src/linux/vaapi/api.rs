@@ -4,12 +4,13 @@ use std::{
     ffi::{c_char, c_int, c_uint, c_void, CStr},
     fs::{File, OpenOptions},
     os::fd::AsRawFd,
-    path::Path,
+    path::{Path, PathBuf},
     ptr,
-    sync::{Arc, OnceLock},
+    sync::{Arc, OnceLock, Weak},
 };
 
 use libloading::Library;
+use parking_lot::Mutex;
 
 use super::sys::*;
 
@@ -118,6 +119,24 @@ unsafe impl Send for Display {}
 unsafe impl Sync for Display {}
 
 impl Display {
+    // The display already open on this render node, if any. Surfaces belong to the display
+    // that created them: the encoder can take the decoder's frames only on the same one
+    pub fn shared(render_node: &Path) -> Result<Arc<Self>, String> {
+        static OPEN: Mutex<Vec<(PathBuf, Weak<Display>)>> = Mutex::new(Vec::new());
+        let mut open = OPEN.lock();
+        open.retain(|(_, display)| display.strong_count() > 0);
+        if let Some(display) = open
+            .iter()
+            .find(|(node, _)| node == render_node)
+            .and_then(|(_, display)| display.upgrade())
+        {
+            return Ok(display);
+        }
+        let display = Self::open(render_node)?;
+        open.push((render_node.to_path_buf(), Arc::downgrade(&display)));
+        Ok(display)
+    }
+
     pub fn open(render_node: &Path) -> Result<Arc<Self>, String> {
         let api = Api::get()?;
         let node = OpenOptions::new()

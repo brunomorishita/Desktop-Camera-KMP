@@ -57,7 +57,7 @@ pub(crate) struct H264Decoder {
 impl H264Decoder {
     pub fn new(render_node: &Path) -> Result<Self, String> {
         Ok(H264Decoder {
-            display: Display::open(render_node)?,
+            display: Display::shared(render_node)?,
             sps: HashMap::new(),
             pps: HashMap::new(),
             dpb: Dpb::default(),

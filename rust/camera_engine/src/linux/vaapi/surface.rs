@@ -42,6 +42,15 @@ impl DecodedFrame {
         }
     }
 
+    // For the encoder, which reads the surface where the decoder wrote it
+    pub(super) fn surface_id(&self) -> VASurfaceID {
+        self.surface.id
+    }
+
+    pub(super) fn display(&self) -> &Arc<Display> {
+        &self.surface.pool.display
+    }
+
     pub fn coded_size(&self) -> (u32, u32) {
         (self.surface.pool.width, self.surface.pool.height)
     }

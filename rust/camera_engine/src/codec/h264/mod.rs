@@ -1,7 +1,9 @@
 // H.264 bitstream parsing and decoding process, shared by the hardware decoders: they only
-// receive ready parameters (POCs, reference lists, scaling lists) for each slice
+// receive ready parameters (POCs, reference lists, scaling lists) for each slice. Also the
+// parameter sets the hardware encoders send
 pub(crate) mod bits;
 pub(crate) mod dpb;
+pub(crate) mod headers;
 pub(crate) mod params;
 pub(crate) mod slice;
 #[cfg(test)]

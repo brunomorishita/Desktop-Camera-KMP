@@ -1,7 +1,7 @@
 // Linux backend. Capture runs on V4L2 and takes cameras that send H.264 or MJPEG. H.264 goes
-// out as is; the preview decodes either format with VA-API and draws it with EGL on the X11
-// window. Not implemented yet: the H.264 encoder (streaming MJPEG cameras), raw cameras
-// and NVDEC
+// out as is; MJPEG is decoded with VA-API and encoded again to H.264 on the same GPU. The
+// preview draws the decoded frames with EGL on the X11 window. Not implemented yet: raw
+// cameras, NVDEC and NVENC
 pub(crate) mod egl;
 // Parts of these modules are used only once the remaining GPU stages land
 #[allow(dead_code, unused_imports)]
@@ -14,10 +14,14 @@ pub(crate) mod vaapi;
 use std::{
     cell::RefCell,
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::JoinHandle,
 };
 
-use crossbeam_channel::{select, Receiver};
+use crossbeam_channel::{bounded, select, Receiver, Sender};
 use parking_lot::Mutex;
 
 use crate::{
@@ -28,9 +32,9 @@ use crate::{
     CameraError, VideoDimensions,
 };
 use egl::EglPreview;
-use gpu::{Codec, DecodeApi, GpuInfo, GpuPreference};
+use gpu::{Codec, DecodeApi, EncodeApi, GpuInfo, GpuPreference, Workload};
 use v4l2::{CaptureMode, CaptureStream, CapturedFrame, PixelFormat};
-use vaapi::{DecodedFrame, H264Decoder, JpegDecoder};
+use vaapi::{DecodedFrame, EncoderSettings, H264Decoder, H264Encoder, JpegDecoder};
 
 pub(crate) struct LinuxBackend;
 
@@ -50,6 +54,25 @@ impl LinuxGpu {
             _ => None,
         }
     }
+
+    // VA-API encoder for the decoded frames: (render node, low power). It must be on the GPU
+    // that decoded them, the display GPU, which reads them in place
+    fn encoder(&self) -> Result<(PathBuf, bool), String> {
+        // The encoder does not depend on the camera format: raw cameras need only it
+        let plan = gpu::plan(&self.gpus, Workload::RawTranscode, &self.preference)?;
+        match plan.encode {
+            Some((index, EncodeApi::Vaapi { low_power })) if index == plan.display_gpu => {
+                Ok((self.gpus[index].render_node.clone(), low_power))
+            }
+            Some((_, EncodeApi::Nvenc)) => {
+                Err("H.264 encoding with NVENC is not supported yet".to_string())
+            }
+            _ => Err(
+                "The H.264 encoder is on another GPU than the decoder, not supported yet"
+                    .to_string(),
+            ),
+        }
+    }
 }
 
 pub(crate) type LinuxFrame = DecodedFrame;
@@ -66,7 +89,11 @@ pub(crate) struct LinuxRenderer {
     preview: RefCell<EglPreview>,
 }
 
-pub(crate) enum LinuxEncoder {}
+// Encoder thread handle. Dropping it stops the thread and waits for it
+pub(crate) struct LinuxEncoder {
+    shutdown: Option<Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
 
 impl Backend for LinuxBackend {
     type Gpu = LinuxGpu;
@@ -318,15 +345,73 @@ impl PreviewRenderer<LinuxBackend> for LinuxRenderer {
 
 impl VideoEncoder<LinuxBackend> for LinuxEncoder {
     fn spawn(
-        _gpu: LinuxGpu,
-        _config: EncoderConfig,
-        _frames: Receiver<LinuxFrame>,
-        _force_keyframe: Arc<AtomicBool>,
-        _sink: EncodedSink,
+        gpu: LinuxGpu,
+        config: EncoderConfig,
+        frames: Receiver<LinuxFrame>,
+        force_keyframe: Arc<AtomicBool>,
+        mut sink: EncodedSink,
     ) -> Result<Self, CameraError> {
-        Err(common(
-            "H.264 encoding is not supported on Linux yet".to_string(),
-        ))
+        let (node, low_power) = gpu.encoder().map_err(common)?;
+        let mut encoder = H264Encoder::new(
+            &node,
+            EncoderSettings {
+                width: config.width,
+                height: config.height,
+                frame_rate: (config.frame_rate.numerator, config.frame_rate.denominator),
+                bitrate: config.bitrate,
+                low_power,
+            },
+        )
+        .map_err(common)?;
+
+        let (shutdown, shutdown_receiver) = bounded::<()>(1);
+        let thread = std::thread::Builder::new()
+            .name("h264-encoder".to_string())
+            .spawn(move || {
+                // Like the capture: only the first error of a run is printed
+                let mut failing = false;
+                loop {
+                    let frame = select! {
+                        recv(frames) -> msg => match msg {
+                            Ok(frame) => frame,
+                            Err(_) => break,
+                        },
+                        recv(shutdown_receiver) -> _ => break,
+                    };
+                    let force = force_keyframe.swap(false, Ordering::Relaxed);
+                    match encoder.encode(&frame, force) {
+                        Ok(encoded) => {
+                            failing = false;
+                            sink(encoded);
+                        }
+                        Err(e) => {
+                            // The keyframe a client waits for is still owed
+                            if force {
+                                force_keyframe.store(true, Ordering::Relaxed);
+                            }
+                            if !failing {
+                                println!("H.264 encode error: {e}");
+                            }
+                            failing = true;
+                        }
+                    }
+                }
+            })
+            .map_err(|e| common(format!("Failed to start the encoder thread: {e}")))?;
+
+        Ok(LinuxEncoder {
+            shutdown: Some(shutdown),
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for LinuxEncoder {
+    fn drop(&mut self) {
+        drop(self.shutdown.take());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 

@@ -21,7 +21,10 @@ use super::{
     h264::{AccessUnit, AccessUnitBuilder, ParameterSets},
     rtp::{random_u32, RtpPacketizer, PAYLOAD_TYPE},
 };
-use crate::{win32::encoder::EncodedFrame, CameraError, StreamTransport};
+use crate::{
+    media::{EncodedFrame, KeyframeRequest},
+    CameraError, StreamTransport,
+};
 
 // Access units buffered per client before it is considered behind
 const BROADCAST_CAPACITY: usize = 64;
@@ -30,9 +33,7 @@ const TCP_OUT_QUEUE: usize = 512;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const FIRST_RTP_PORT: u16 = 6970;
 
-pub type KeyframeRequest = Arc<dyn Fn() + Send + Sync>;
-
-// Producer side: encoder output goes in, every playing client gets it
+// Producer side: encoder (or camera) output goes in, every playing client gets it
 pub struct StreamPublisher {
     frames: broadcast::Sender<Arc<AccessUnit>>,
     params: watch::Sender<Option<ParameterSets>>,
@@ -50,8 +51,8 @@ impl StreamPublisher {
         }
     }
 
-    pub fn publish(&mut self, frame: EncodedFrame) {
-        let access_unit = self.builder.build(&frame);
+    pub fn publish(&mut self, frame: &EncodedFrame) {
+        let access_unit = self.builder.build(frame);
 
         let params = self.builder.parameter_sets();
         if params.is_some() && *self.params.borrow() != params {

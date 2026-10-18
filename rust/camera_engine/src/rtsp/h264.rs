@@ -1,4 +1,4 @@
-use crate::win32::encoder::EncodedFrame;
+use crate::media::EncodedFrame;
 
 pub const NAL_IDR: u8 = 5;
 pub const NAL_SPS: u8 = 7;

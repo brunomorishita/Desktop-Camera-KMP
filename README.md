@@ -1,6 +1,7 @@
 # Desktop-Camera-KMP
 
-A Windows desktop app that shows your webcam and streams it over the network via RTSP.
+A desktop app (Windows, Linux in progress) that shows your webcam and streams it over the
+network via RTSP.
 The UI is built with **Kotlin Multiplatform + Compose Multiplatform**; the camera, rendering,
 encoding and streaming run in a **Rust** native library that talks directly to
 **Direct3D 11** and **Windows Media Foundation**, exposed to Kotlin through **UniFFI**.
@@ -17,7 +18,11 @@ Foundation by building something real. Contributions, questions and suggestions 
 | Stream settings: interface, port, path, UDP/TCP | ✅ Done |
 | Take snapshots | 🔜 Planned |
 | Record videos | 🔜 Planned |
-| Support for macOS/Linux | 💭 Idea |
+| Linux: RTSP streaming of H.264 cameras (V4L2, no re-encoding) | 🚧 In progress |
+| Linux: preview of H.264 and MJPEG cameras (VA-API decode, EGL on X11/XWayland, zero copy) | 🚧 In progress |
+| Linux: RTSP streaming of MJPEG cameras (VA-API JPEG decode + H.264 encode, zero copy) | 🚧 In progress |
+| Linux: raw (YUYV/NV12) cameras, NVIDIA (NVDEC/NVENC) | 🔜 Planned |
+| Support for macOS | 💭 Idea |
 
 The app has two screens, selected from the bottom bar:
 
@@ -53,9 +58,14 @@ The app has two screens, selected from the bottom bar:
 
 ## Requirements
 
-- **Windows 10 or 11** (the native layer uses Windows-only APIs)
-- A GPU with **Direct3D 11.1** support and a hardware H.264 encoder (practically any
-  Intel, AMD or NVIDIA GPU from the last years)
+- **Windows 10 or 11** with a GPU with **Direct3D 11.1** support and a hardware H.264
+  encoder (practically any Intel, AMD or NVIDIA GPU from the last years)
+- or **Linux** (work in progress): a camera that sends H.264 or MJPEG (`v4l2-ctl
+  --list-formats` shows `H264` or `MJPG`). H.264 is streamed without re-encoding; MJPEG
+  is decoded and encoded to H.264 on the GPU, which needs VA-API JPEG decoding and H.264
+  encoding with constant bitrate (Intel or AMD). The preview needs an X11 session (or
+  XWayland) and a GPU that decodes H.264 or JPEG with VA-API. Raw cameras are not
+  supported yet
 - A webcam
 - **Rust** toolchain (`rustc` + `cargo`) — install with [rustup](https://rustup.rs/)
 - **JDK 21** — Gradle downloads it automatically if needed (via the foojay toolchain resolver)
@@ -70,12 +80,19 @@ cd Desktop-Camera-KMP
 .\gradlew.bat :desktopApp:run
 ```
 
+On Linux, `cargo` must be on the `PATH` and the app needs an X11 session (or XWayland):
+
+```sh
+./gradlew :desktopApp:run
+```
+
 The first build takes a while. Gradle automatically:
 
 1. Builds the Rust library with `cargo build --release` (task `buildRustRelease`).
 2. Generates the Kotlin bindings with UniFFI into `shared/build/generated/uniffi/kotlin`
    (task `generateUniFFIBindings`).
-3. Packages `camera_engine.dll` as a JVM resource and runs the app.
+3. Packages the library (`camera_engine.dll` or `libcamera_engine.so`) as a JVM resource
+   under the JNA platform folder (e.g. `win32-x86-64/`) and runs the app.
 
 You can open the project in **IntelliJ IDEA** or **Android Studio** with the Kotlin
 Multiplatform plugin and run the `desktopApp` configuration from there.
@@ -122,20 +139,35 @@ Desktop-Camera-KMP/
 │       │   ├── TransmitScreen.kt / TransmitViewModel.kt
 │       │   ├── domain/CameraService.kt   # Interface the UI depends on
 │       │   └── di/                       # Koin modules
-│       └── jvmMain/             # Windows implementation
-│           ├── WindowsCameraService.kt   # CameraService → Rust bindings
-│           └── NativeLibLoader.kt        # Loads camera_engine.dll
+│       └── jvmMain/             # Desktop implementation (Windows and Linux)
+│           ├── NativeCameraService.kt    # CameraService → Rust bindings
+│           └── NativeLibLoader.kt        # Loads the native library through JNA
 └── rust/
     └── camera_engine/src/
         ├── ffi/                 # API exported to Kotlin (UniFFI)
         │   ├── camera.rs        # CameraController: preview + capture lifecycle
         │   └── rtsp_transmitter.rs  # start/stop streaming
-        ├── win32/               # Windows APIs
+        ├── codec/h264/          # H.264 parsing and decoding process (POC, references,
+        │                        #   lists, output order) for the hardware decoders, and the
+        │                        #   SPS/PPS the hardware encoders send
+        ├── codec/jpeg.rs        # Baseline JPEG headers (MJPEG), default Huffman tables
+        ├── media/               # Platform independent contracts
+        │   ├── mod.rs           # Backend traits (capture, preview, encoder) and shared types
+        │   └── hub.rs           # FrameHub: fan-out of frames to consumers
+        ├── win32/               # Windows backend
         │   ├── capture.rs       # Camera capture (WinRT MediaCapture)
         │   ├── device.rs        # Shared D3D11 device
-        │   ├── frame.rs         # FrameHub: fan-out of frames to consumers
+        │   ├── frame.rs         # Pool of NV12 GPU textures
         │   ├── renderer.rs      # Draws frames into the preview window
         │   └── encoder.rs       # Hardware H.264 encoder (Media Foundation)
+        ├── linux/               # Linux backend: H.264 cameras stream as is (passthrough),
+        │                        #   MJPEG ones are decoded and encoded again on the GPU
+        │   ├── egl/             # Preview: imports decoded DMA-BUFs, draws on the X11 window
+        │   ├── gpu/             # GPU detection (sysfs, VA-API, CUDA/NVENC/NVDEC) and choice
+        │   ├── v4l2/            # Camera capture (V4L2 ioctls, mmap buffers, DMA-BUF export)
+        │   └── vaapi/           # H.264 and JPEG decode to NV12 surfaces, H.264 encode (VA-API,
+        │                        #   loaded with dlopen);
+        │                        #   sys.rs is generated by tools/gen-va-bindings.sh
         ├── rtsp/                # RTSP server, RTP packetizer, H.264 parsing
         └── bin/uniffi-bindgen.rs  # Binding generator used by Gradle
 ```
@@ -163,7 +195,7 @@ Every kind of contribution helps: bug reports, ideas, docs and code.
 
 - **Adding a feature to the native layer:** implement it in `rust/camera_engine/src`, export it
   with `#[uniffi::export]` in `ffi/`, then call the generated binding from
-  `WindowsCameraService.kt` and add the method to the `CameraService` interface.
+  `NativeCameraService.kt` and add the method to the `CameraService` interface.
 - **UI changes:** everything lives in `shared/src/commonMain`.
 - **Good first contributions:** the planned features (snapshots, video recording), saving the
   stream settings across restarts, a bitrate option in the settings dialog, or improving

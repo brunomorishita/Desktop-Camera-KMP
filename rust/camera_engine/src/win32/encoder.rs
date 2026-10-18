@@ -44,26 +44,10 @@ use windows::{
 };
 
 use crate::{
-    win32::{capture::FrameRate, device::GpuDevice, frame::SharedFrame},
+    media::{EncodedFrame, EncodedSink, EncoderConfig, VideoEncoder},
+    win32::{device::GpuDevice, frame::SharedFrame, Win32Backend},
     CameraError,
 };
-
-#[derive(Debug, Clone, Copy)]
-pub struct EncoderConfig {
-    pub width: u32,
-    pub height: u32,
-    pub frame_rate: FrameRate,
-    pub bitrate: u32,
-}
-
-// One H.264 access unit in Annex B format (start codes + NAL units)
-pub struct EncodedFrame {
-    pub data: Vec<u8>,
-    // 100ns units, same clock as the captured frames
-    pub timestamp_hns: i64,
-}
-
-pub type EncodedSink = Box<dyn FnMut(EncodedFrame) + Send>;
 
 // Encoder thread handle: Media Foundation objects live only inside that thread
 pub struct H264Encoder {
@@ -71,12 +55,11 @@ pub struct H264Encoder {
     thread: Option<JoinHandle<()>>,
 }
 
-impl H264Encoder {
-    pub fn spawn(
+impl VideoEncoder<Win32Backend> for H264Encoder {
+    fn spawn(
         gpu: GpuDevice,
         config: EncoderConfig,
         frames: Receiver<SharedFrame>,
-        // Set to true to make the next encoded frame an IDR
         force_keyframe: Arc<AtomicBool>,
         sink: EncodedSink,
     ) -> Result<Self, CameraError> {

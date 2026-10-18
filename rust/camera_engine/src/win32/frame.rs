@@ -1,9 +1,5 @@
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
-use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 use windows::Win32::Graphics::{
     Direct3D11::{
@@ -105,30 +101,3 @@ impl Drop for VideoFrame {
 }
 
 pub type SharedFrame = Arc<VideoFrame>;
-
-// Fan-out of captured frames to every consumer (preview windows and encoder)
-#[derive(Default)]
-pub struct FrameHub {
-    subscribers: Mutex<Vec<(u64, Sender<SharedFrame>)>>,
-    next_id: AtomicU64,
-}
-
-impl FrameHub {
-    pub fn subscribe(&self, capacity: usize) -> (u64, Receiver<SharedFrame>) {
-        let (sender, receiver) = bounded(capacity);
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.subscribers.lock().push((id, sender));
-        (id, receiver)
-    }
-
-    pub fn unsubscribe(&self, id: u64) {
-        self.subscribers.lock().retain(|(sub_id, _)| *sub_id != id);
-    }
-
-    pub fn publish(&self, frame: SharedFrame) {
-        // Never blocks the capture thread: a consumer that is behind just misses this frame
-        for (_, sender) in self.subscribers.lock().iter() {
-            let _ = sender.try_send(frame.clone());
-        }
-    }
-}

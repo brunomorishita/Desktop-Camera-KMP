@@ -11,6 +11,8 @@ class CameraViewModel(
     private val cameraService: CameraService
 ) : ViewModel() {
 
+    val previewSupported: Boolean = cameraService.previewSupported
+
     // Called on the AWT thread while the window exists
     fun attach(hwndPointer: ULong, width: UInt, height: UInt) {
         try {

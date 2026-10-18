@@ -1,7 +1,6 @@
-use std::{ffi::c_void, mem::ManuallyDrop, sync::Arc};
+use std::{ffi::c_void, mem::ManuallyDrop};
 
 use crossbeam_channel::{select, Receiver};
-use parking_lot::Mutex;
 use windows::{
     core::Interface,
     Win32::{
@@ -32,12 +31,10 @@ use windows::{
 };
 
 use crate::{
-    win32::{device::GpuDevice, frame::SharedFrame},
+    media::{PendingSize, PreviewRenderer},
+    win32::{device::GpuDevice, frame::SharedFrame, Win32Backend},
     CameraError,
 };
-
-// Latest output size requested by the UI, consumed by the render thread
-pub type PendingSize = Arc<Mutex<Option<(u32, u32)>>>;
 
 // Frame pool has a fixed set of textures, so input views can be cached per texture
 const MAX_CACHED_INPUT_VIEWS: usize = 16;
@@ -57,9 +54,9 @@ struct Processor {
     input_views: Vec<(ID3D11Texture2D, ID3D11VideoProcessorInputView)>,
 }
 
-impl InnerNativeRenderer {
-    pub fn new(gpu: GpuDevice, hwnd_raw: u64, width: u32, height: u32) -> Result<Self, CameraError> {
-        let hwnd = HWND(hwnd_raw as *mut c_void);
+impl PreviewRenderer<Win32Backend> for InnerNativeRenderer {
+    fn new(gpu: GpuDevice, window_handle: u64, width: u32, height: u32) -> Result<Self, CameraError> {
+        let hwnd = HWND(window_handle as *mut c_void);
 
         // Navigate COM graph to get modern Factory (IDXGIFactory2)
         let factory: IDXGIFactory2 = unsafe { gpu.adapter()?.GetParent() }?;
@@ -95,7 +92,7 @@ impl InnerNativeRenderer {
         Ok(InnerNativeRenderer { gpu, swap_chain })
     }
 
-    pub fn start(
+    fn run(
         &self,
         frames: Receiver<SharedFrame>,
         shutdown: Receiver<()>,
@@ -166,6 +163,14 @@ impl InnerNativeRenderer {
         Ok(())
     }
 
+    fn stop(&self) {
+        unsafe {
+            self.gpu.context.Flush();
+        }
+    }
+}
+
+impl InnerNativeRenderer {
     fn create_processor(
         &self,
         video_device: &ID3D11VideoDevice,
@@ -272,12 +277,6 @@ impl InnerNativeRenderer {
         }
 
         Ok(())
-    }
-
-    pub fn stop(&self) {
-        unsafe {
-            self.gpu.context.Flush();
-        }
     }
 }
 

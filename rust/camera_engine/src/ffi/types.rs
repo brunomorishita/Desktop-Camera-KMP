@@ -10,6 +10,7 @@ pub enum CameraError {
     CommonError { msg: String },
 }
 
+#[cfg(windows)]
 impl From<windows::core::Error> for CameraError {
     fn from(value: windows::core::Error) -> Self {
         CameraError::Windows {

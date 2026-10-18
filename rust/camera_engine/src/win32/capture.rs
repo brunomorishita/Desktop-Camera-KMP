@@ -28,9 +28,11 @@ use windows::{
 };
 
 use crate::{
+    media::{CameraH264, CaptureSource, FrameHub, FrameRate},
     win32::{
         device::GpuDevice,
-        frame::{FrameHub, FramePool, VideoFrame},
+        frame::{FramePool, SharedFrame, VideoFrame},
+        Win32Backend,
     },
     CameraError, VideoDimensions,
 };
@@ -40,24 +42,19 @@ const FRAME_POOL_SIZE: usize = 8;
 // Camera pool textures opened on our device, a camera usually recycles 4-10
 const MAX_OPENED_TEXTURES: usize = 16;
 
-#[derive(Debug, Clone, Copy)]
-pub struct FrameRate {
-    pub numerator: u32,
-    pub denominator: u32,
-}
-
 // Internal state of native capture
 #[derive(Debug)]
 pub struct InnerNativeCapture {
     media_capture: AgileReference<MediaCapture>,
     frame_reader: AgileReference<MediaFrameReader>,
     frame_arrived_token: Mutex<Option<i64>>,
-    pub dimensions: VideoDimensions,
-    pub frame_rate: FrameRate,
+    dimensions: VideoDimensions,
+    frame_rate: FrameRate,
 }
 
-impl InnerNativeCapture {
-    pub async fn new() -> Result<Self, CameraError> {
+impl CaptureSource<Win32Backend> for InnerNativeCapture {
+    // MediaCapture decodes whatever the camera sends to NV12, every camera works
+    async fn open(_gpu: GpuDevice) -> Result<Self, CameraError> {
         // 1. Initialize MediaCapture
         let media_capture_agile = {
             let media_capture = MediaCapture::new()?;
@@ -136,7 +133,24 @@ impl InnerNativeCapture {
         })
     }
 
-    pub async fn start(&self, gpu: GpuDevice, hub: Arc<FrameHub>) -> Result<(), CameraError> {
+    fn dimensions(&self) -> VideoDimensions {
+        self.dimensions
+    }
+
+    fn frame_rate(&self) -> FrameRate {
+        self.frame_rate
+    }
+
+    // MediaCapture hands out decoded NV12 only
+    fn camera_h264(&self) -> Option<CameraH264> {
+        None
+    }
+
+    async fn start(
+        &self,
+        gpu: GpuDevice,
+        hub: Arc<FrameHub<SharedFrame>>,
+    ) -> Result<(), CameraError> {
         {
             let pool = FramePool::new(
                 &gpu.device,
@@ -187,7 +201,7 @@ impl InnerNativeCapture {
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<(), CameraError> {
+    async fn stop(&self) -> Result<(), CameraError> {
         let async_op = self.frame_reader.resolve()?.StopAsync()?;
 
         async_op.await?;

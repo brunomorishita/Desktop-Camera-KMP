@@ -148,6 +148,7 @@ impl EglPreview {
             if (gl.check_framebuffer_status)(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE {
                 return Err("offscreen framebuffer is incomplete".to_string());
             }
+            (api.egl.make_current)(display, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             Self::finish(
                 api,
                 display,
@@ -162,29 +163,27 @@ impl EglPreview {
         }
     }
 
+    // The context is never made current here: the calling thread may be the UI thread, which
+    // has Skiko's GLX context current, and libglvnd refuses an EGL context on a thread that
+    // holds one of another API (EGL_BAD_ACCESS). The render thread builds the GL objects
     unsafe fn finish(
         api: &'static Api,
         display: EglDisplay,
         context: EglContext,
         target: Target,
     ) -> Result<Self, String> {
-        let mut preview = EglPreview {
+        Ok(EglPreview {
             api,
             display,
             context,
             target,
             program: 0,
             images: HashMap::new(),
-        };
-        preview.make_current()?;
-        preview.program = build_program(api)?;
-        // Released here, the render thread makes it current again
-        preview.release_current();
-        Ok(preview)
+        })
     }
 
     // Must be called on the thread that draws, before the first draw
-    pub fn make_current(&self) -> Result<(), String> {
+    pub fn make_current(&mut self) -> Result<(), String> {
         let surface = match self.target {
             Target::X11 { surface, .. } => surface,
             Target::Offscreen { .. } => ptr::null_mut(),
@@ -196,6 +195,9 @@ impl EglPreview {
             if let Target::X11 { .. } = self.target {
                 // Paced by the display like the Windows swap chain (Present with sync 1)
                 (self.api.egl.swap_interval)(self.display, 1);
+            }
+            if self.program == 0 {
+                self.program = build_program(self.api)?;
             }
         }
         Ok(())
@@ -400,8 +402,9 @@ impl EglPreview {
 impl Drop for EglPreview {
     fn drop(&mut self) {
         let api = self.api;
-        // GL objects can only be deleted with the context current
-        if self.make_current().is_ok() {
+        // GL objects can only be deleted with the context current, and exist only once the
+        // render thread made it current
+        if self.program != 0 && self.make_current().is_ok() {
             self.clear_images();
             unsafe {
                 (api.gl.delete_program)(self.program);

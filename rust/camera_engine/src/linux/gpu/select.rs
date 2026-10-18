@@ -91,8 +91,8 @@ impl PipelinePlan {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Decode {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Codec {
     H264,
     Jpeg,
 }
@@ -102,37 +102,16 @@ pub(crate) fn plan(
     workload: Workload,
     preference: &GpuPreference,
 ) -> Result<PipelinePlan, String> {
-    if gpus.is_empty() {
-        return Err("No GPU found under /dev/dri".to_string());
-    }
-
-    let display_gpu = gpus
-        .iter()
-        .position(|gpu| gpu.drives_display)
-        .or_else(|| gpus.iter().position(|gpu| gpu.boot_vga))
-        .unwrap_or(0);
-    let home = match preference {
-        GpuPreference::Auto => display_gpu,
-        GpuPreference::Vendor(vendor) => gpus
-            .iter()
-            .position(|gpu| gpu.vendor == *vendor)
-            .ok_or_else(|| format!("No {vendor:?} GPU found"))?,
-        GpuPreference::RenderNode(path) => gpus
-            .iter()
-            .position(|gpu| gpu.render_node == Path::new(path))
-            .ok_or_else(|| format!("GPU {} not found", path.display()))?,
-    };
-    let ranking = Ranking { home, display_gpu };
-
+    let ranking = Ranking::new(gpus, preference)?;
     let decode = match workload {
         Workload::H264Passthrough => Some(
             ranking
-                .best_decoder(gpus, Decode::H264)
+                .best_decoder(gpus, Codec::H264)
                 .ok_or("No GPU can decode H.264 (VA-API or NVDEC) for the preview")?,
         ),
         Workload::MjpegTranscode => Some(
             ranking
-                .best_decoder(gpus, Decode::Jpeg)
+                .best_decoder(gpus, Codec::Jpeg)
                 .ok_or("No GPU can decode MJPEG (VA-API or NVDEC)")?,
         ),
         Workload::RawTranscode => None,
@@ -147,10 +126,23 @@ pub(crate) fn plan(
     };
 
     Ok(PipelinePlan {
-        display_gpu,
+        display_gpu: ranking.display_gpu,
         decode,
         encode,
     })
+}
+
+// Decoder feeding the preview, chosen as plan() does but without needing an encoder (the
+// preview works before streaming does). None when it would not run on the display GPU
+pub(crate) fn preview_decoder(
+    gpus: &[GpuInfo],
+    codec: Codec,
+    preference: &GpuPreference,
+) -> Option<(usize, DecodeApi)> {
+    let ranking = Ranking::new(gpus, preference).ok()?;
+    ranking
+        .best_decoder(gpus, codec)
+        .filter(|(gpu, _)| *gpu == ranking.display_gpu)
 }
 
 struct Ranking {
@@ -160,6 +152,30 @@ struct Ranking {
 }
 
 impl Ranking {
+    fn new(gpus: &[GpuInfo], preference: &GpuPreference) -> Result<Self, String> {
+        if gpus.is_empty() {
+            return Err("No GPU found under /dev/dri".to_string());
+        }
+
+        let display_gpu = gpus
+            .iter()
+            .position(|gpu| gpu.drives_display)
+            .or_else(|| gpus.iter().position(|gpu| gpu.boot_vga))
+            .unwrap_or(0);
+        let home = match preference {
+            GpuPreference::Auto => display_gpu,
+            GpuPreference::Vendor(vendor) => gpus
+                .iter()
+                .position(|gpu| gpu.vendor == *vendor)
+                .ok_or_else(|| format!("No {vendor:?} GPU found"))?,
+            GpuPreference::RenderNode(path) => gpus
+                .iter()
+                .position(|gpu| gpu.render_node == Path::new(path))
+                .ok_or_else(|| format!("GPU {} not found", path.display()))?,
+        };
+        Ok(Ranking { home, display_gpu })
+    }
+
     // Home first; when it lacks the feature, the display GPU at least avoids a copy back
     fn gpu_score(&self, gpu: usize) -> u32 {
         if gpu == self.home {
@@ -171,14 +187,14 @@ impl Ranking {
         }
     }
 
-    fn best_decoder(&self, gpus: &[GpuInfo], codec: Decode) -> Option<(usize, DecodeApi)> {
+    fn best_decoder(&self, gpus: &[GpuInfo], codec: Codec) -> Option<(usize, DecodeApi)> {
         let mut candidates = Vec::new();
         for (index, gpu) in gpus.iter().enumerate() {
             let score = self.gpu_score(index);
             if let Some(Ok(nvidia)) = &gpu.nvidia {
                 let supported = match codec {
-                    Decode::H264 => nvidia.nvdec_h264,
-                    Decode::Jpeg => nvidia.nvdec_jpeg,
+                    Codec::H264 => nvidia.nvdec_h264,
+                    Codec::Jpeg => nvidia.nvdec_jpeg,
                 };
                 // Native API of the driver; VA-API on NVIDIA is a translation layer over it
                 if supported {
@@ -187,8 +203,8 @@ impl Ranking {
             }
             if let Ok(vaapi) = &gpu.vaapi {
                 let supported = match codec {
-                    Decode::H264 => vaapi.h264_decode,
-                    Decode::Jpeg => vaapi.jpeg_decode,
+                    Codec::H264 => vaapi.h264_decode,
+                    Codec::Jpeg => vaapi.jpeg_decode,
                 };
                 if supported {
                     candidates.push((score, index, DecodeApi::Vaapi));
@@ -345,6 +361,28 @@ mod tests {
         let raw = plan(&gpus, Workload::RawTranscode, &GpuPreference::Auto).unwrap();
         assert_eq!(raw.encode, Some((1, EncodeApi::Nvenc)));
         assert!(!raw.is_zero_copy());
+    }
+
+    #[test]
+    fn preview_decoder_needs_no_encoder_and_stays_on_the_display_gpu() {
+        let mut no_encoder = intel(true);
+        if let Ok(vaapi) = &mut no_encoder.vaapi {
+            vaapi.h264_encode = false;
+            vaapi.h264_encode_low_power = false;
+        }
+        let alone = [no_encoder];
+        assert!(plan(&alone, Workload::MjpegTranscode, &GpuPreference::Auto).is_err());
+        assert_eq!(
+            preview_decoder(&alone, Codec::Jpeg, &GpuPreference::Auto),
+            Some((0, DecodeApi::Vaapi))
+        );
+
+        // Decoding on the NVIDIA GPU would leave the frames away from the screen
+        let gpus = [intel(true), nvidia(false, Some(full_nvidia()))];
+        assert_eq!(
+            preview_decoder(&gpus, Codec::Jpeg, &GpuPreference::Vendor(Vendor::Nvidia)),
+            None
+        );
     }
 
     #[test]

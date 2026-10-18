@@ -179,8 +179,9 @@ impl CameraController {
         capture: &mut Option<NativeCapture>,
     ) -> Result<(VideoDimensions, FrameRate), CameraError> {
         if capture.is_none() {
-            let new_capture = NativeCapture::open().await?;
-            new_capture.start(self.gpu()?, self.hub.clone()).await?;
+            let gpu = self.gpu()?;
+            let new_capture = NativeCapture::open(gpu.clone()).await?;
+            new_capture.start(gpu, self.hub.clone()).await?;
             *capture = Some(new_capture);
         }
 

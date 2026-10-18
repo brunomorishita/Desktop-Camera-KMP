@@ -613,7 +613,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        linux::{gpu, vaapi::H264Decoder},
+        linux::{
+            gpu,
+            vaapi::{H264Decoder, JpegDecoder},
+        },
         rtsp::h264::{nal_type, split_annex_b, NAL_AUD},
     };
 
@@ -706,6 +709,44 @@ mod tests {
                 "{size}: picture differs from ffmpeg's conversion"
             );
         }
+    }
+
+    // JPEG is full range BT.601, the H.264 test streams limited range: both must come out
+    // as ffmpeg converts them
+    #[test]
+    #[ignore = "needs ffmpeg and a VA-API GPU with EGL, run with: cargo test -- --ignored --nocapture"]
+    fn draws_full_range_jpeg_frames_like_ffmpeg_converts_them() {
+        let node = render_node();
+        let dir = std::env::temp_dir().join(format!("egl-jpeg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (picture, reference) = (dir.join("picture.jpg"), dir.join("reference.rgba"));
+        ffmpeg(format!(
+            "-f lavfi -i testsrc2=size=640x480 -frames:v 1 -c:v mjpeg -q:v 2 -pix_fmt yuvj420p {}",
+            picture.display()
+        ));
+        ffmpeg(format!(
+            "-i {} -sws_flags bilinear+full_chroma_int+accurate_rnd -f rawvideo -pix_fmt rgba {}",
+            picture.display(),
+            reference.display()
+        ));
+        let (picture, reference) = (
+            std::fs::read(&picture).unwrap(),
+            std::fs::read(&reference).unwrap(),
+        );
+        std::fs::remove_dir_all(&dir).ok();
+
+        let mut decoder = JpegDecoder::new(&node).unwrap();
+        let frame = decoder.decode(&picture, 0).unwrap();
+        assert!(frame.full_range && !frame.bt709);
+        let mut preview = EglPreview::offscreen(&node, 640, 480).unwrap();
+        preview.make_current().unwrap();
+        preview.draw(&frame).unwrap();
+        let (mean, p99) = difference(&preview.read_pixels(), &reference);
+        println!("JPEG: mean difference {mean:.2}, 99th percentile {p99}");
+        assert!(
+            mean < 0.5 && p99 <= 2,
+            "picture differs from ffmpeg's conversion"
+        );
     }
 
     #[test]

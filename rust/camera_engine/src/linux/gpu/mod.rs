@@ -8,7 +8,9 @@ mod vaapi;
 
 use std::{fmt, path::PathBuf};
 
-pub(crate) use select::{plan, DecodeApi, EncodeApi, GpuPreference, PipelinePlan, Workload};
+pub(crate) use select::{
+    plan, preview_decoder, Codec, DecodeApi, EncodeApi, GpuPreference, PipelinePlan, Workload,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Vendor {

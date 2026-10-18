@@ -506,6 +506,10 @@ impl<const N: usize> __BindgenBitfieldUnit<[u8; N]> {
 }
 pub const VA_STATUS_SUCCESS: u32 = 0;
 pub const VA_RT_FORMAT_YUV420: u32 = 1;
+pub const VA_RT_FORMAT_YUV422: u32 = 2;
+pub const VA_RT_FORMAT_YUV444: u32 = 4;
+pub const VA_RT_FORMAT_YUV411: u32 = 8;
+pub const VA_RT_FORMAT_YUV400: u32 = 16;
 pub const VA_INVALID_ID: u32 = 4294967295;
 pub const VA_INVALID_SURFACE: u32 = 4294967295;
 pub const VA_SURFACE_ATTRIB_NOT_SUPPORTED: u32 = 0;
@@ -535,12 +539,39 @@ pub const VA_EXPORT_SURFACE_READ_WRITE: u32 = 3;
 pub const VA_EXPORT_SURFACE_SEPARATE_LAYERS: u32 = 4;
 pub const VA_EXPORT_SURFACE_COMPOSED_LAYERS: u32 = 8;
 pub const VA_FOURCC_NV12: u32 = 842094158;
+pub const VA_FOURCC_UYVY: u32 = 1498831189;
+pub const VA_FOURCC_YUY2: u32 = 844715353;
+pub const VA_FOURCC_Y800: u32 = 808466521;
+pub const VA_FOURCC_IMC3: u32 = 860048713;
+pub const VA_FOURCC_411P: u32 = 1345401140;
+pub const VA_FOURCC_422H: u32 = 1211249204;
+pub const VA_FOURCC_422V: u32 = 1446130228;
+pub const VA_FOURCC_444P: u32 = 1345598516;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM: u32 = 268435456;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME: u32 = 536870912;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2: u32 = 1073741824;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3: u32 = 134217728;
 pub type VADisplay = *mut ::std::os::raw::c_void;
 pub type VAStatus = ::std::os::raw::c_int;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _VARectangle {
+    pub x: i16,
+    pub y: i16,
+    pub width: u16,
+    pub height: u16,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VARectangle"][::std::mem::size_of::<_VARectangle>() - 8usize];
+    ["Alignment of _VARectangle"][::std::mem::align_of::<_VARectangle>() - 2usize];
+    ["Offset of field: _VARectangle::x"][::std::mem::offset_of!(_VARectangle, x) - 0usize];
+    ["Offset of field: _VARectangle::y"][::std::mem::offset_of!(_VARectangle, y) - 2usize];
+    ["Offset of field: _VARectangle::width"][::std::mem::offset_of!(_VARectangle, width) - 4usize];
+    ["Offset of field: _VARectangle::height"]
+        [::std::mem::offset_of!(_VARectangle, height) - 6usize];
+};
+pub type VARectangle = _VARectangle;
 pub const VAProfileNone: VAProfile = -1;
 pub const VAProfileMPEG2Simple: VAProfile = 0;
 pub const VAProfileMPEG2Main: VAProfile = 1;
@@ -842,6 +873,79 @@ pub const VATileBufferType: VABufferType = 65;
 pub const VASliceStructBufferType: VABufferType = 66;
 pub const VABufferTypeMax: VABufferType = 67;
 pub type VABufferType = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _VAHuffmanTableBufferJPEGBaseline {
+    pub load_huffman_table: [u8; 2usize],
+    pub huffman_table: [_VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1; 2usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1 {
+    pub num_dc_codes: [u8; 16usize],
+    pub dc_values: [u8; 12usize],
+    pub num_ac_codes: [u8; 16usize],
+    pub ac_values: [u8; 162usize],
+    pub pad: [u8; 2usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1>() - 208usize];
+    ["Alignment of _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1>() - 1usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1::num_dc_codes"][::std::mem::offset_of!(
+        _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1,
+        num_dc_codes
+    ) - 0usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1::dc_values"][::std::mem::offset_of!(
+        _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1,
+        dc_values
+    ) - 16usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1::num_ac_codes"][::std::mem::offset_of!(
+        _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1,
+        num_ac_codes
+    ) - 28usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1::ac_values"][::std::mem::offset_of!(
+        _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1,
+        ac_values
+    ) - 44usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1::pad"]
+        [::std::mem::offset_of!(_VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1, pad) - 206usize];
+};
+impl Default for _VAHuffmanTableBufferJPEGBaseline__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAHuffmanTableBufferJPEGBaseline"]
+        [::std::mem::size_of::<_VAHuffmanTableBufferJPEGBaseline>() - 436usize];
+    ["Alignment of _VAHuffmanTableBufferJPEGBaseline"]
+        [::std::mem::align_of::<_VAHuffmanTableBufferJPEGBaseline>() - 4usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline::load_huffman_table"]
+        [::std::mem::offset_of!(_VAHuffmanTableBufferJPEGBaseline, load_huffman_table) - 0usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline::huffman_table"]
+        [::std::mem::offset_of!(_VAHuffmanTableBufferJPEGBaseline, huffman_table) - 2usize];
+    ["Offset of field: _VAHuffmanTableBufferJPEGBaseline::va_reserved"]
+        [::std::mem::offset_of!(_VAHuffmanTableBufferJPEGBaseline, va_reserved) - 420usize];
+};
+impl Default for _VAHuffmanTableBufferJPEGBaseline {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAHuffmanTableBufferJPEGBaseline = _VAHuffmanTableBufferJPEGBaseline;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct _VAPictureH264 {
@@ -2130,6 +2234,188 @@ const _: () = {
         [::std::mem::offset_of!(_VAImage, va_reserved) - 104usize];
 };
 pub type VAImage = _VAImage;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _VAPictureParameterBufferJPEGBaseline {
+    pub picture_width: u16,
+    pub picture_height: u16,
+    pub components: [_VAPictureParameterBufferJPEGBaseline__bindgen_ty_1; 255usize],
+    pub num_components: u8,
+    pub color_space: u8,
+    pub rotation: u32,
+    pub crop_rectangle: VARectangle,
+    pub va_reserved: [u32; 5usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1 {
+    pub component_id: u8,
+    pub h_sampling_factor: u8,
+    pub v_sampling_factor: u8,
+    pub quantiser_table_selector: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAPictureParameterBufferJPEGBaseline__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAPictureParameterBufferJPEGBaseline__bindgen_ty_1>() - 1usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1::component_id"][::std::mem::offset_of!(
+        _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1,
+        component_id
+    )
+        - 0usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1::h_sampling_factor"][::std::mem::offset_of!(
+        _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1,
+        h_sampling_factor
+    )
+        - 1usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1::v_sampling_factor"][::std::mem::offset_of!(
+        _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1,
+        v_sampling_factor
+    )
+        - 2usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline__bindgen_ty_1::quantiser_table_selector"] [:: std :: mem :: offset_of ! (_VAPictureParameterBufferJPEGBaseline__bindgen_ty_1 , quantiser_table_selector) - 3usize] ;
+};
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferJPEGBaseline"]
+        [::std::mem::size_of::<_VAPictureParameterBufferJPEGBaseline>() - 1060usize];
+    ["Alignment of _VAPictureParameterBufferJPEGBaseline"]
+        [::std::mem::align_of::<_VAPictureParameterBufferJPEGBaseline>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::picture_width"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, picture_width) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::picture_height"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, picture_height) - 2usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::components"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, components) - 4usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::num_components"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, num_components) - 1024usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::color_space"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, color_space) - 1025usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::rotation"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, rotation) - 1028usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::crop_rectangle"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, crop_rectangle) - 1032usize];
+    ["Offset of field: _VAPictureParameterBufferJPEGBaseline::va_reserved"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferJPEGBaseline, va_reserved) - 1040usize];
+};
+impl Default for _VAPictureParameterBufferJPEGBaseline {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAPictureParameterBufferJPEGBaseline = _VAPictureParameterBufferJPEGBaseline;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _VAIQMatrixBufferJPEGBaseline {
+    pub load_quantiser_table: [u8; 4usize],
+    pub quantiser_table: [[u8; 64usize]; 4usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAIQMatrixBufferJPEGBaseline"]
+        [::std::mem::size_of::<_VAIQMatrixBufferJPEGBaseline>() - 276usize];
+    ["Alignment of _VAIQMatrixBufferJPEGBaseline"]
+        [::std::mem::align_of::<_VAIQMatrixBufferJPEGBaseline>() - 4usize];
+    ["Offset of field: _VAIQMatrixBufferJPEGBaseline::load_quantiser_table"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferJPEGBaseline, load_quantiser_table) - 0usize];
+    ["Offset of field: _VAIQMatrixBufferJPEGBaseline::quantiser_table"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferJPEGBaseline, quantiser_table) - 4usize];
+    ["Offset of field: _VAIQMatrixBufferJPEGBaseline::va_reserved"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferJPEGBaseline, va_reserved) - 260usize];
+};
+impl Default for _VAIQMatrixBufferJPEGBaseline {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAIQMatrixBufferJPEGBaseline = _VAIQMatrixBufferJPEGBaseline;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _VASliceParameterBufferJPEGBaseline {
+    pub slice_data_size: u32,
+    pub slice_data_offset: u32,
+    pub slice_data_flag: u32,
+    pub slice_horizontal_position: u32,
+    pub slice_vertical_position: u32,
+    pub components: [_VASliceParameterBufferJPEGBaseline__bindgen_ty_1; 4usize],
+    pub num_components: u8,
+    pub restart_interval: u16,
+    pub num_mcus: u32,
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _VASliceParameterBufferJPEGBaseline__bindgen_ty_1 {
+    pub component_selector: u8,
+    pub dc_table_selector: u8,
+    pub ac_table_selector: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASliceParameterBufferJPEGBaseline__bindgen_ty_1>() - 3usize];
+    ["Alignment of _VASliceParameterBufferJPEGBaseline__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASliceParameterBufferJPEGBaseline__bindgen_ty_1>() - 1usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline__bindgen_ty_1::component_selector"][::std::mem::offset_of!(
+        _VASliceParameterBufferJPEGBaseline__bindgen_ty_1,
+        component_selector
+    )
+        - 0usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline__bindgen_ty_1::dc_table_selector"][::std::mem::offset_of!(
+        _VASliceParameterBufferJPEGBaseline__bindgen_ty_1,
+        dc_table_selector
+    )
+        - 1usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline__bindgen_ty_1::ac_table_selector"][::std::mem::offset_of!(
+        _VASliceParameterBufferJPEGBaseline__bindgen_ty_1,
+        ac_table_selector
+    )
+        - 2usize];
+};
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferJPEGBaseline"]
+        [::std::mem::size_of::<_VASliceParameterBufferJPEGBaseline>() - 56usize];
+    ["Alignment of _VASliceParameterBufferJPEGBaseline"]
+        [::std::mem::align_of::<_VASliceParameterBufferJPEGBaseline>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::slice_data_size"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, slice_data_size) - 0usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::slice_data_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, slice_data_offset) - 4usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::slice_data_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, slice_data_flag) - 8usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::slice_horizontal_position"][::std::mem::offset_of!(
+        _VASliceParameterBufferJPEGBaseline,
+        slice_horizontal_position
+    )
+        - 12usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::slice_vertical_position"][::std::mem::offset_of!(
+        _VASliceParameterBufferJPEGBaseline,
+        slice_vertical_position
+    ) - 16usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::components"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, components) - 20usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::num_components"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, num_components) - 32usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::restart_interval"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, restart_interval) - 34usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::num_mcus"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, num_mcus) - 36usize];
+    ["Offset of field: _VASliceParameterBufferJPEGBaseline::va_reserved"]
+        [::std::mem::offset_of!(_VASliceParameterBufferJPEGBaseline, va_reserved) - 40usize];
+};
+pub type VASliceParameterBufferJPEGBaseline = _VASliceParameterBufferJPEGBaseline;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct _VADRMPRIMESurfaceDescriptor {

@@ -81,7 +81,8 @@ pub(crate) trait Backend: Sized + 'static {
 
 // Camera producing frames into the hub
 pub(crate) trait CaptureSource<B: Backend>: Sized + Send + Sync + 'static {
-    async fn open() -> Result<Self, CameraError>;
+    // The GPU tells which camera formats can be used, e.g. MJPEG only where it is decoded
+    async fn open(gpu: B::Gpu) -> Result<Self, CameraError>;
     fn dimensions(&self) -> VideoDimensions;
     fn frame_rate(&self) -> FrameRate;
     async fn start(&self, gpu: B::Gpu, hub: Arc<FrameHub<B::Frame>>) -> Result<(), CameraError>;

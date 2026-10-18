@@ -57,7 +57,8 @@ private fun PreviewUnavailable(modifier: Modifier = Modifier) {
         Text(
             text = "A pré-visualização da câmera não está disponível neste sistema.\n" +
                 "No Linux ela precisa de uma sessão X11 (ou XWayland) e de uma GPU que\n" +
-                "decodifique H.264 por VA-API. A transmissão RTSP continua disponível.",
+                "decodifique H.264 ou JPEG por VA-API. A transmissão RTSP de câmeras H.264\n" +
+                "continua disponível.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

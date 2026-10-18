@@ -53,7 +53,8 @@ pub struct InnerNativeCapture {
 }
 
 impl CaptureSource<Win32Backend> for InnerNativeCapture {
-    async fn open() -> Result<Self, CameraError> {
+    // MediaCapture decodes whatever the camera sends to NV12, every camera works
+    async fn open(_gpu: GpuDevice) -> Result<Self, CameraError> {
         // 1. Initialize MediaCapture
         let media_capture_agile = {
             let media_capture = MediaCapture::new()?;

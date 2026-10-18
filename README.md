@@ -3,18 +3,19 @@
 A desktop app (Windows, Linux in progress) that shows your webcam and streams it over the
 network via RTSP.
 The UI is built with **Kotlin Multiplatform + Compose Multiplatform**; the camera, rendering,
-encoding and streaming run in a **Rust** native library that talks directly to
-**Direct3D 11** and **Windows Media Foundation**, exposed to Kotlin through **UniFFI**.
+encoding and streaming run in a **Rust** native library, exposed to Kotlin through **UniFFI**.
+On Windows it talks directly to **Direct3D 11** and **Windows Media Foundation**; on Linux to
+**V4L2**, **VA-API** and **EGL**.
 
-This is a personal learning project: the goal is to explore KMP, Rust, DirectX and Media
-Foundation by building something real. Contributions, questions and suggestions are welcome.
+This is a personal learning project: the goal is to explore KMP, Rust and the native video
+APIs of each platform by building something real. Contributions, questions and suggestions are welcome.
 
 ## Features
 
 | Feature | Status |
 | --- | --- |
-| Live camera preview (GPU-rendered with Direct3D 11) | ✅ Done |
-| RTSP streaming (hardware H.264 encoder, RTP over UDP or TCP) | ✅ Done |
+| Windows: live camera preview (GPU-rendered with Direct3D 11) | ✅ Done |
+| Windows: RTSP streaming (hardware H.264 encoder, RTP over UDP or TCP) | ✅ Done |
 | Stream settings: interface, port, path, UDP/TCP | ✅ Done |
 | Take snapshots | 🔜 Planned |
 | Record videos | 🔜 Planned |
@@ -40,20 +41,32 @@ The app has two screens, selected from the bottom bar:
 │        UniFFI-generated bindings (JNA)                       │
 └────────────────────┬─────────────────────────────────────────┘
                      ▼
-┌──────────────── Rust: camera_engine (.dll) ──────────────────┐
-│  CameraController                                            │
-│     capture (WinRT MediaCapture / MediaFrameReader)          │
-│        │  frames stay on the GPU (shared D3D11 device)       │
-│        ▼                                                     │
-│     FrameHub ──► renderer (D3D11 → window HWND)  [preview]   │
-│              └─► H.264 encoder (Media Foundation)            │
-│                     └─► RTP packetizer ─► RTSP server        │
+┌────────── Rust: camera_engine (.dll / .so) ──────────────────┐
+│  CameraController ─► media traits (capture, preview, encoder)│
+│     capture ─► FrameHub ──► preview renderer   [preview]     │
+│                         └─► H.264 encoder                    │
+│                                └─► RTP packetizer ─► RTSP    │
+│                                                     server   │
+├──────────────── backend picked at compile time ──────────────┤
+│  Windows: WinRT MediaCapture → D3D11 renderer (HWND)         │
+│           → Media Foundation H.264 encoder                   │
+│  Linux:   V4L2 capture                                       │
+│           H.264 camera → stream: straight to RTP (as is)     │
+│                          preview: VA-API H.264 decode → EGL  │
+│           MJPEG camera → VA-API JPEG decode → EGL preview    │
+│                          and VA-API H.264 encode → stream    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 - A single camera capture is shared by every consumer (preview windows and the stream).
   It starts when the first consumer appears and stops when the last one goes away.
-- Frames never leave the GPU between capture, preview and encoding.
+- `CameraController` only talks to the traits in `media/`; each platform implements them in
+  its own backend (`win32/` or `linux/`).
+- Frames never leave the GPU between capture, preview and encoding. On Linux the decoded
+  frames are shared as DMA-BUFs between VA-API and EGL.
+- On Linux the driver libraries (libva, EGL, GLES, X11, and CUDA/NVENC/NVDEC to detect
+  NVIDIA GPUs) are
+  loaded with `dlopen` at run time, so building needs no system development packages.
 - The RTSP server is implemented from scratch (no external streaming library) on top of Tokio.
 
 ## Requirements
@@ -97,6 +110,27 @@ The first build takes a while. Gradle automatically:
 You can open the project in **IntelliJ IDEA** or **Android Studio** with the Kotlin
 Multiplatform plugin and run the `desktopApp` configuration from there.
 
+### Linux notes
+
+- **Libraries at run time:** the engine opens `libva.so.2`, `libva-drm.so.2`, `libEGL.so.1`,
+  `libGLESv2.so.2` and `libX11.so.6` with `dlopen`. They come with the usual Mesa/VA-API
+  drivers (e.g. `intel-media-driver` or Mesa's VA-API driver for AMD); no `-dev` packages
+  are needed to build. Use `vainfo` to see which profiles your GPU decodes and encodes.
+- **Permissions:** your user needs access to the camera (`/dev/video*`) and to the GPU render
+  nodes (`/dev/dri/renderD*`), usually through the `video` and `render` groups.
+- **Camera:** the first V4L2 camera found is used. Its nodes are grouped by USB bus, since a
+  camera can expose each format on a different `/dev/videoN`, and H.264 is preferred over
+  MJPEG when the camera offers both.
+- **Choosing the GPU:** with more than one GPU, every stage stays on the GPU that drives the
+  display by default, so frames are not copied between GPUs. Override it with the
+  `CAMERA_ENGINE_GPU` environment variable:
+  ```sh
+  CAMERA_ENGINE_GPU=intel ./gradlew :desktopApp:run    # or nvidia, amd, /dev/dri/renderD129
+  ```
+- **No preview?** When there is no X11 display or no GPU that decodes the camera's format with
+  VA-API, the **Ver** tab shows a notice instead of the preview. Streaming H.264 cameras still
+  works, since it doesn't need a GPU.
+
 ### Watching the stream
 
 Open the **Transmitir** tab and click the **Transmitir** button (**Parar** stops it). The app
@@ -124,7 +158,9 @@ The gear button next to **Transmitir** opens the stream settings (only while sto
   other players, force it (e.g. `ffplay -rtsp_transport tcp ...` or VLC's "RTP over RTSP (TCP)").
 
 Settings are kept while the app is open and reset to the defaults on restart.
-If clients on other machines can't connect, check whether Windows Firewall is blocking the port.
+If clients on other machines can't connect, check whether the firewall (Windows Firewall,
+or `ufw`/`firewalld` on Linux) is blocking the port. Over UDP the video goes to separate
+ports on the client; if it connects but shows no image, try TCP, which only uses the RTSP port.
 
 ## Project structure
 
@@ -139,9 +175,10 @@ Desktop-Camera-KMP/
 │       │   ├── TransmitScreen.kt / TransmitViewModel.kt
 │       │   ├── domain/CameraService.kt   # Interface the UI depends on
 │       │   └── di/                       # Koin modules
-│       └── jvmMain/             # Desktop implementation (Windows and Linux)
-│           ├── NativeCameraService.kt    # CameraService → Rust bindings
-│           └── NativeLibLoader.kt        # Loads the native library through JNA
+│       ├── jvmMain/             # Desktop implementation (Windows and Linux)
+│       │   ├── NativeCameraService.kt    # CameraService → Rust bindings
+│       │   └── NativeLibLoader.kt        # Loads the native library through JNA
+│       └── jvmTest/             # Loads the real native library from the classpath
 └── rust/
     └── camera_engine/src/
         ├── ffi/                 # API exported to Kotlin (UniFFI)
@@ -178,28 +215,36 @@ Every kind of contribution helps: bug reports, ideas, docs and code.
 
 1. **Open an issue first** for bigger changes, so we can discuss the approach.
 2. Fork the repo and create a branch from `main`.
-3. Make your change and check that the app still builds and runs:
+3. Make your change and check that the app still builds and runs, and that the JVM tests
+   pass (they load the native library the same way the app does):
    ```powershell
    .\gradlew.bat :desktopApp:run
+   .\gradlew.bat :shared:jvmTest
    ```
+   On Linux use `./gradlew` instead of `.\gradlew.bat`.
 4. If you touched the Rust code, run its tests and the formatter/linter:
-   ```powershell
+   ```sh
    cd rust
    cargo test
    cargo fmt
    cargo clippy
    ```
-5. Open a pull request describing what changed and how you tested it.
+   On Linux, a few tests need real hardware (a VA-API GPU, EGL, `ffmpeg`) and are skipped by
+   default. Run them with `cargo test -- --ignored --nocapture`.
+5. Open a pull request describing what changed and how you tested it. If the change touches
+   the native layer, say which platform(s) you tested it on.
 
 ### Where to start
 
 - **Adding a feature to the native layer:** implement it in `rust/camera_engine/src`, export it
   with `#[uniffi::export]` in `ffi/`, then call the generated binding from
-  `NativeCameraService.kt` and add the method to the `CameraService` interface.
+  `NativeCameraService.kt` and add the method to the `CameraService` interface. If it needs
+  platform code, add it to the traits in `media/mod.rs` and implement it in both `win32/`
+  and `linux/`.
 - **UI changes:** everything lives in `shared/src/commonMain`.
 - **Good first contributions:** the planned features (snapshots, video recording), saving the
   stream settings across restarts, a bitrate option in the settings dialog, or improving
-  error messages.
+  error messages. On Linux: support for raw (YUYV/NV12) cameras or NVIDIA (NVDEC/NVENC).
 
 ### Tips
 
@@ -207,11 +252,16 @@ Every kind of contribution helps: bug reports, ideas, docs and code.
   the Rust code changes.
 - If the build behaves strangely after changing Rust code, try `.\gradlew.bat clean` and
   `cargo clean` in the `rust/` folder.
+- `linux/vaapi/sys.rs` is generated and committed. Regenerate it with
+  `rust/camera_engine/tools/gen-va-bindings.sh` only when you need a new VA-API struct or
+  constant (it needs `bindgen-cli`, libclang and the libva headers).
 - Learning resources for the stack:
   [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html),
   [UniFFI](https://mozilla.github.io/uniffi-rs/),
   [windows-rs](https://github.com/microsoft/windows-rs),
-  [Media Foundation](https://learn.microsoft.com/windows/win32/medfound/microsoft-media-foundation-sdk).
+  [Media Foundation](https://learn.microsoft.com/windows/win32/medfound/microsoft-media-foundation-sdk),
+  [V4L2](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html),
+  [VA-API (libva)](https://github.com/intel/libva).
 
 ## License
 
